@@ -13,12 +13,9 @@ import {
   saveWatchAddresses,
   validateAddress,
 } from "@/lib/portfolio";
+import { readPublicIndex } from "@/lib/vault";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-
-interface StoredWallet {
-  publicKey: string;
-}
 
 const chainNames: Record<Chain, string> = { ethereum: "Ethereum", solana: "Solana" };
 
@@ -43,16 +40,17 @@ export default function PortfolioDashboard() {
   const [watchLabel, setWatchLabel] = useState("");
   const [watchChain, setWatchChain] = useState<Chain>("ethereum");
   const [selectedQr, setSelectedQr] = useState<PortfolioAddress | null>(null);
+  const [tokenQuery, setTokenQuery] = useState("");
+  const [history, setHistory] = useState<Array<{ timestamp: number; value: number }>>([]);
   const refreshRequest = useRef(0);
 
   const syncAddresses = useCallback(() => {
-    const wallets = JSON.parse(localStorage.getItem("wallets") || "[]") as StoredWallet[];
-    const paths = JSON.parse(localStorage.getItem("paths") || "[]") as string[];
+    const wallets = readPublicIndex();
     const generated: PortfolioAddress[] = wallets.map((wallet, index) => ({
       id: `wallet-${index}-${wallet.publicKey}`,
-      label: `Wallet ${index + 1}`,
+      label: wallet.label || `Wallet ${index + 1}`,
       address: wallet.publicKey,
-      chain: inferChain(paths[index] || paths[0]),
+      chain: inferChain(wallet.path),
       source: "wallet",
       walletIndex: index,
     }));
@@ -66,11 +64,18 @@ export default function PortfolioDashboard() {
     const results = await Promise.all(addresses.map(loadPortfolio));
     if (requestId === refreshRequest.current) {
       setSnapshots(results);
+      const value = results.reduce((sum, snapshot) => sum + (snapshot.nativeValueUsd || 0) + snapshot.tokens.reduce((tokenSum, token) => tokenSum + (token.valueUsd || 0), 0), 0);
+      setHistory((previous) => {
+        const nextHistory = [...previous, { timestamp: Date.now(), value }].slice(-14);
+        localStorage.setItem("portfolioHistory", JSON.stringify(nextHistory));
+        return nextHistory;
+      });
       setLoading(false);
     }
   }, [addresses]);
 
   useEffect(() => {
+    try { setHistory(JSON.parse(localStorage.getItem("portfolioHistory") || "[]")); } catch { setHistory([]); }
     syncAddresses();
     const handler = () => syncAddresses();
     window.addEventListener("avhisafe:wallets-updated", handler);
@@ -129,7 +134,7 @@ export default function PortfolioDashboard() {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="mb-2 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><h3 className="text-lg font-bold">Portfolio history</h3><p className="text-sm text-primary/50">Last 14 refresh snapshots, stored only in this browser.</p></div><div className="flex items-end gap-1">{history.slice(-14).map((point) => <div key={point.timestamp} title={`${new Date(point.timestamp).toLocaleString()}: ${formatUsd(point.value)}`} className="w-3 rounded-t bg-primary/50" style={{ height: `${Math.max(8, Math.min(48, point.value / Math.max(totalUsd, 1) * 48))}px` }} />)}</div></div>      <div className="mb-2 flex items-center gap-3"><Input value={tokenQuery} onChange={(event) => setTokenQuery(event.target.value)} placeholder="Search token holdings across wallets" /></div><div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-primary/10 bg-primary/[0.04] p-6"><p className="text-sm text-primary/60">Tracked addresses</p><p className="mt-2 text-3xl font-black">{addresses.length}</p></div>
         <div className="rounded-2xl border border-primary/10 bg-primary/[0.04] p-6"><p className="text-sm text-primary/60">Estimated portfolio value</p><p className="mt-2 text-3xl font-black">{formatUsd(totalUsd)}</p></div>
         <div className="rounded-2xl border border-primary/10 bg-primary/[0.04] p-6"><p className="text-sm text-primary/60">Data mode</p><p className="mt-2 text-3xl font-black">Read-only</p></div>
@@ -145,7 +150,7 @@ export default function PortfolioDashboard() {
                 <div><div className="flex items-center gap-2"><span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-bold">{chainNames[snapshot.address.chain]}</span><span className="text-xs text-primary/50">{snapshot.address.source === "watch" ? "Watch-only" : "Generated wallet"}</span></div><h3 className="mt-3 text-2xl font-bold tracking-tight">{snapshot.address.label}</h3><p className="mt-1 max-w-[28rem] truncate font-mono text-xs text-primary/60">{snapshot.address.address}</p></div>
                 <div className="flex gap-1"><Button variant="ghost" size="icon" onClick={() => copyAddress(snapshot.address.address)} aria-label="Copy address"><Copy className="size-4" /></Button><Button variant="ghost" size="icon" onClick={() => setSelectedQr(snapshot.address)} aria-label="Show QR code"><QrCode className="size-4" /></Button>{snapshot.address.source === "watch" && <Button variant="ghost" size="icon" onClick={() => removeWatchAddress(snapshot.address)} aria-label="Remove address"><Trash2 className="size-4 text-destructive" /></Button>}</div>
               </div>
-              {snapshot.error ? <p className="mt-5 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{snapshot.error}</p> : <><div className="mt-6 flex items-end justify-between"><div><p className="text-sm text-primary/60">Native balance</p><p className="text-3xl font-black">{formatAmount(snapshot.nativeBalance)} <span className="text-base">{snapshot.nativeSymbol}</span></p></div><p className="text-right text-lg font-bold">{formatUsd(snapshot.nativeValueUsd)}</p></div><div className="mt-6"><h4 className="font-bold">Token holdings <span className="text-primary/50">({snapshot.tokens.length})</span></h4>{snapshot.tokens.length ? <div className="mt-3 flex flex-col gap-2">{snapshot.tokens.slice(0, 6).map((token) => <div key={token.id} className="flex items-center justify-between rounded-lg bg-background/60 p-3 text-sm"><span><strong>{token.symbol}</strong><span className="ml-2 text-primary/50">{token.name}</span></span><span className="text-right">{formatAmount(token.amount)}<br /><span className="text-xs text-primary/50">{formatUsd(token.valueUsd)}</span></span></div>)}</div> : <p className="mt-3 text-sm text-primary/50">No non-zero token holdings were returned.</p>}</div><div className="mt-6"><div className="flex items-center justify-between"><h4 className="font-bold">Recent activity</h4><a href={snapshot.explorerUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-bold text-primary/70 hover:text-primary">Explorer <ExternalLink className="size-3" /></a></div>{snapshot.transactions.length ? <div className="mt-3 flex flex-col gap-2">{snapshot.transactions.slice(0, 5).map((tx) => <a key={tx.hash} href={tx.explorerUrl} target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-lg bg-background/60 p-3 text-sm hover:bg-background"><span className="font-mono">{tx.hash.slice(0, 10)}…{tx.hash.slice(-6)}</span><span className="text-primary/50">{tx.status || "View"} <ExternalLink className="ml-1 inline size-3" /></span></a>)}</div> : <p className="mt-3 text-sm text-primary/50">No recent transactions returned.</p>}</div></>}
+              {snapshot.error ? <p className="mt-5 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{snapshot.error}</p> : <><div className="mt-6 flex items-end justify-between"><div><p className="text-sm text-primary/60">Native balance</p><p className="text-3xl font-black">{formatAmount(snapshot.nativeBalance)} <span className="text-base">{snapshot.nativeSymbol}</span></p></div><p className="text-right text-lg font-bold">{formatUsd(snapshot.nativeValueUsd)}</p></div><div className="mt-6"><h4 className="font-bold">Token holdings <span className="text-primary/50">({snapshot.tokens.length})</span></h4>{snapshot.tokens.length ? <div className="mt-3 flex flex-col gap-2">{snapshot.tokens.filter((token) => token.symbol.toLowerCase().includes(tokenQuery.toLowerCase()) || token.name.toLowerCase().includes(tokenQuery.toLowerCase())).slice(0, 6).map((token) => <div key={token.id} className="flex items-center justify-between rounded-lg bg-background/60 p-3 text-sm"><span><strong>{token.symbol}</strong><span className="ml-2 text-primary/50">{token.name}</span></span><span className="text-right">{formatAmount(token.amount)}<br /><span className="text-xs text-primary/50">{formatUsd(token.valueUsd)}</span></span></div>)}</div> : <p className="mt-3 text-sm text-primary/50">No non-zero token holdings were returned.</p>}</div><div className="mt-6"><div className="flex items-center justify-between"><h4 className="font-bold">Recent activity</h4><a href={snapshot.explorerUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-bold text-primary/70 hover:text-primary">Explorer <ExternalLink className="size-3" /></a></div>{snapshot.transactions.length ? <div className="mt-3 flex flex-col gap-2">{snapshot.transactions.slice(0, 5).map((tx) => <a key={tx.hash} href={tx.explorerUrl} target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-lg bg-background/60 p-3 text-sm hover:bg-background"><span className="font-mono">{tx.hash.slice(0, 10)}…{tx.hash.slice(-6)}</span><span className="text-primary/50">{tx.status || "View"} <ExternalLink className="ml-1 inline size-3" /></span></a>)}</div> : <p className="mt-3 text-sm text-primary/50">No recent transactions returned.</p>}</div></>}
             </article>
           ))}
         </div>

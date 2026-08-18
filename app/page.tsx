@@ -1,6 +1,7 @@
 import Navbar from "@/components/Navbar";
 import WalletGenerator from "@/components/WalletGenerator";
 import PortfolioDashboard from "@/components/PortfolioDashboard";
+import SecurityCenter from "@/components/SecurityCenter";
 
 export default function Home() {
   return (
@@ -8,6 +9,7 @@ export default function Home() {
       <Navbar />
       <WalletGenerator />
       <PortfolioDashboard />
+      <SecurityCenter />
     </main>
   );
 }

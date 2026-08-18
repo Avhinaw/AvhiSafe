@@ -1,5 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { useVault } from "./VaultProvider";
+import type { VaultWallet } from "@/lib/vault";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
 import nacl from "tweetnacl";
@@ -32,12 +34,7 @@ import {
   AlertDialogTrigger,
 } from "./ui/alert-dialog";
 
-interface Wallet {
-  publicKey: string;
-  privateKey: string;
-  mnemonic: string;
-  path: string;
-}
+type Wallet = VaultWallet;
 
 const WalletGenerator = () => {
   const [mnemonicWords, setMnemonicWords] = useState<string[]>(
@@ -50,6 +47,7 @@ const WalletGenerator = () => {
   const [visiblePrivateKeys, setVisiblePrivateKeys] = useState<boolean[]>([]);
   const [visiblePhrases, setVisiblePhrases] = useState<boolean[]>([]);
   const [gridView, setGridView] = useState<boolean>(false);
+  const { wallets: securedWallets, persist } = useVault();
   const pathTypeNames: { [key: string]: string } = {
     "501": "Solana",
     "60": "Ethereum",
@@ -58,18 +56,14 @@ const WalletGenerator = () => {
   const pathTypeName = pathTypeNames[pathTypes[0]] || "";
 
   useEffect(() => {
-    const storedWallets = localStorage.getItem("wallets");
-    const storedMnemonic = localStorage.getItem("mnemonics");
-    const storedPathTypes = localStorage.getItem("paths");
-
-    if (storedWallets && storedMnemonic && storedPathTypes) {
-      setMnemonicWords(JSON.parse(storedMnemonic));
-      setWallets(JSON.parse(storedWallets));
-      setPathTypes(JSON.parse(storedPathTypes));
-      setVisiblePrivateKeys(JSON.parse(storedWallets).map(() => false));
-      setVisiblePhrases(JSON.parse(storedWallets).map(() => false));
+    setWallets(securedWallets);
+    if (securedWallets.length) {
+      setMnemonicWords(securedWallets[0].mnemonic.split(" "));
+      setPathTypes(securedWallets.map((wallet) => wallet.path.includes("501") ? "501" : "60"));
+      setVisiblePrivateKeys(securedWallets.map(() => false));
+      setVisiblePhrases(securedWallets.map(() => false));
     }
-  }, []);
+  }, [securedWallets]);
 
   const handleDeleteWallet = (index: number) => {
     const updatedWallets = wallets.filter((_, i) => i !== index);
@@ -77,7 +71,7 @@ const WalletGenerator = () => {
 
     setWallets(updatedWallets);
     setPathTypes(updatedPathTypes);
-    localStorage.setItem("wallets", JSON.stringify(updatedWallets));
+    void persist(updatedWallets);
     localStorage.setItem("paths", JSON.stringify(updatedPathTypes));
     window.dispatchEvent(new Event("avhisafe:wallets-updated"));
     setVisiblePrivateKeys(visiblePrivateKeys.filter((_, i) => i !== index));
@@ -86,7 +80,7 @@ const WalletGenerator = () => {
   };
 
   const handleClearWallets = () => {
-    localStorage.removeItem("wallets");
+    void persist([]);
     localStorage.removeItem("mnemonics");
     localStorage.removeItem("paths");
     window.dispatchEvent(new Event("avhisafe:wallets-updated"));
@@ -182,7 +176,7 @@ const WalletGenerator = () => {
     if (wallet) {
       const updatedWallets = [...wallets, wallet];
       setWallets(updatedWallets);
-      localStorage.setItem("wallets", JSON.stringify(updatedWallets));
+      void persist(updatedWallets);
       localStorage.setItem("mnemonics", JSON.stringify(words));
       localStorage.setItem("paths", JSON.stringify(pathTypes));
       window.dispatchEvent(new Event("avhisafe:wallets-updated"));
@@ -208,7 +202,7 @@ const WalletGenerator = () => {
       const updatedPathTypes = [...pathTypes, pathTypes[0]];
       setWallets(updatedWallets);
       setPathTypes(updatedPathTypes);
-      localStorage.setItem("wallets", JSON.stringify(updatedWallets));
+      void persist(updatedWallets);
       localStorage.setItem("paths", JSON.stringify(updatedPathTypes));
       window.dispatchEvent(new Event("avhisafe:wallets-updated"));
       setVisiblePrivateKeys([...visiblePrivateKeys, false]);

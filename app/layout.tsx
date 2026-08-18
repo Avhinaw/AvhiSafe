@@ -4,6 +4,8 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/themeprovider";
 import Footer from "@/components/Footer";
+import { VaultProvider } from "@/components/VaultProvider";
+import VaultGate from "@/components/VaultGate";
 
 const manrope = Manrope({ subsets: ["latin"] });
 
@@ -40,10 +42,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <Toaster />
-
-          {children}
-          <Footer />
+          <VaultProvider>
+            <Toaster />
+            <VaultGate>
+              {children}
+              <Footer />
+            </VaultGate>
+          </VaultProvider>
         </ThemeProvider>
       </body>
     </html>

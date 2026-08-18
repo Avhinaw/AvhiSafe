@@ -79,6 +79,7 @@ const WalletGenerator = () => {
     setPathTypes(updatedPathTypes);
     localStorage.setItem("wallets", JSON.stringify(updatedWallets));
     localStorage.setItem("paths", JSON.stringify(updatedPathTypes));
+    window.dispatchEvent(new Event("avhisafe:wallets-updated"));
     setVisiblePrivateKeys(visiblePrivateKeys.filter((_, i) => i !== index));
     setVisiblePhrases(visiblePhrases.filter((_, i) => i !== index));
     toast.success("Wallet deleted successfully!");
@@ -88,6 +89,7 @@ const WalletGenerator = () => {
     localStorage.removeItem("wallets");
     localStorage.removeItem("mnemonics");
     localStorage.removeItem("paths");
+    window.dispatchEvent(new Event("avhisafe:wallets-updated"));
     setWallets([]);
     setMnemonicWords([]);
     setPathTypes([]);
@@ -183,6 +185,7 @@ const WalletGenerator = () => {
       localStorage.setItem("wallets", JSON.stringify(updatedWallets));
       localStorage.setItem("mnemonics", JSON.stringify(words));
       localStorage.setItem("paths", JSON.stringify(pathTypes));
+      window.dispatchEvent(new Event("avhisafe:wallets-updated"));
       setVisiblePrivateKeys([...visiblePrivateKeys, false]);
       setVisiblePhrases([...visiblePhrases, false]);
       toast.success("Wallet generated successfully!");
@@ -207,6 +210,7 @@ const WalletGenerator = () => {
       setPathTypes(updatedPathTypes);
       localStorage.setItem("wallets", JSON.stringify(updatedWallets));
       localStorage.setItem("paths", JSON.stringify(updatedPathTypes));
+      window.dispatchEvent(new Event("avhisafe:wallets-updated"));
       setVisiblePrivateKeys([...visiblePrivateKeys, false]);
       setVisiblePhrases([...visiblePhrases, false]);
       toast.success("Wallet generated successfully!");

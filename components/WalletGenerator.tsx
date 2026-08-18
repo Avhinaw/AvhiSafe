@@ -202,10 +202,11 @@ const WalletGenerator = () => {
     );
     if (wallet) {
       const updatedWallets = [...wallets, wallet];
-      const updatedPathType = [pathTypes, pathTypes];
+      const updatedPathTypes = [...pathTypes, pathTypes[0]];
       setWallets(updatedWallets);
+      setPathTypes(updatedPathTypes);
       localStorage.setItem("wallets", JSON.stringify(updatedWallets));
-      localStorage.setItem("pathTypes", JSON.stringify(updatedPathType));
+      localStorage.setItem("paths", JSON.stringify(updatedPathTypes));
       setVisiblePrivateKeys([...visiblePrivateKeys, false]);
       setVisiblePhrases([...visiblePhrases, false]);
       toast.success("Wallet generated successfully!");

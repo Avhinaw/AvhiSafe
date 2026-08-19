@@ -14,6 +14,7 @@ import {
   validateAddress,
 } from "@/lib/portfolio";
 import { readPublicIndex } from "@/lib/vault";
+import { readConnectedWallets } from "@/lib/connectedWallet";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
@@ -54,7 +55,8 @@ export default function PortfolioDashboard() {
       source: "wallet",
       walletIndex: index,
     }));
-    const combined = [...generated, ...getStoredWatchAddresses().filter((watch) => !generated.some((item) => item.address === watch.address && item.chain === watch.chain))];
+    const connected = readConnectedWallets().map((wallet): PortfolioAddress => ({ id: `connected-${wallet.id}`, label: wallet.label, address: wallet.address, chain: wallet.chain, source: "connected" }));
+    const combined = [...generated, ...connected, ...getStoredWatchAddresses().filter((watch) => !generated.some((item) => item.address === watch.address && item.chain === watch.chain) && !connected.some((item) => item.address === watch.address && item.chain === watch.chain))];
     setAddresses(combined);
   }, []);
 
@@ -79,7 +81,8 @@ export default function PortfolioDashboard() {
     syncAddresses();
     const handler = () => syncAddresses();
     window.addEventListener("avhisafe:wallets-updated", handler);
-    return () => window.removeEventListener("avhisafe:wallets-updated", handler);
+    window.addEventListener("avhisafe:connected-wallets-updated", handler);
+    return () => { window.removeEventListener("avhisafe:wallets-updated", handler); window.removeEventListener("avhisafe:connected-wallets-updated", handler); };
   }, [syncAddresses]);
 
   useEffect(() => {
@@ -147,7 +150,7 @@ export default function PortfolioDashboard() {
           {snapshots.map((snapshot) => (
             <article key={snapshot.address.id} className="rounded-2xl border border-primary/10 bg-secondary/30 p-6">
               <div className="flex items-start justify-between gap-4">
-                <div><div className="flex items-center gap-2"><span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-bold">{chainNames[snapshot.address.chain]}</span><span className="text-xs text-primary/50">{snapshot.address.source === "watch" ? "Watch-only" : "Generated wallet"}</span></div><h3 className="mt-3 text-2xl font-bold tracking-tight">{snapshot.address.label}</h3><p className="mt-1 max-w-[28rem] truncate font-mono text-xs text-primary/60">{snapshot.address.address}</p></div>
+                <div><div className="flex items-center gap-2"><span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-bold">{chainNames[snapshot.address.chain]}</span><span className="text-xs text-primary/50">{snapshot.address.source === "watch" ? "Watch-only" : snapshot.address.source === "connected" ? "Connected wallet" : "Generated wallet"}</span></div><h3 className="mt-3 text-2xl font-bold tracking-tight">{snapshot.address.label}</h3><p className="mt-1 max-w-[28rem] truncate font-mono text-xs text-primary/60">{snapshot.address.address}</p></div>
                 <div className="flex gap-1"><Button variant="ghost" size="icon" onClick={() => copyAddress(snapshot.address.address)} aria-label="Copy address"><Copy className="size-4" /></Button><Button variant="ghost" size="icon" onClick={() => setSelectedQr(snapshot.address)} aria-label="Show QR code"><QrCode className="size-4" /></Button>{snapshot.address.source === "watch" && <Button variant="ghost" size="icon" onClick={() => removeWatchAddress(snapshot.address)} aria-label="Remove address"><Trash2 className="size-4 text-destructive" /></Button>}</div>
               </div>
               {snapshot.error ? <p className="mt-5 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{snapshot.error}</p> : <><div className="mt-6 flex items-end justify-between"><div><p className="text-sm text-primary/60">Native balance</p><p className="text-3xl font-black">{formatAmount(snapshot.nativeBalance)} <span className="text-base">{snapshot.nativeSymbol}</span></p></div><p className="text-right text-lg font-bold">{formatUsd(snapshot.nativeValueUsd)}</p></div><div className="mt-6"><h4 className="font-bold">Token holdings <span className="text-primary/50">({snapshot.tokens.length})</span></h4>{snapshot.tokens.length ? <div className="mt-3 flex flex-col gap-2">{snapshot.tokens.filter((token) => token.symbol.toLowerCase().includes(tokenQuery.toLowerCase()) || token.name.toLowerCase().includes(tokenQuery.toLowerCase())).slice(0, 6).map((token) => <div key={token.id} className="flex items-center justify-between rounded-lg bg-background/60 p-3 text-sm"><span><strong>{token.symbol}</strong><span className="ml-2 text-primary/50">{token.name}</span></span><span className="text-right">{formatAmount(token.amount)}<br /><span className="text-xs text-primary/50">{formatUsd(token.valueUsd)}</span></span></div>)}</div> : <p className="mt-3 text-sm text-primary/50">No non-zero token holdings were returned.</p>}</div><div className="mt-6"><div className="flex items-center justify-between"><h4 className="font-bold">Recent activity</h4><a href={snapshot.explorerUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-bold text-primary/70 hover:text-primary">Explorer <ExternalLink className="size-3" /></a></div>{snapshot.transactions.length ? <div className="mt-3 flex flex-col gap-2">{snapshot.transactions.slice(0, 5).map((tx) => <a key={tx.hash} href={tx.explorerUrl} target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-lg bg-background/60 p-3 text-sm hover:bg-background"><span className="font-mono">{tx.hash.slice(0, 10)}…{tx.hash.slice(-6)}</span><span className="text-primary/50">{tx.status || "View"} <ExternalLink className="ml-1 inline size-3" /></span></a>)}</div> : <p className="mt-3 text-sm text-primary/50">No recent transactions returned.</p>}</div></>}

@@ -8,7 +8,7 @@ export interface PortfolioAddress {
   label: string;
   address: string;
   chain: Chain;
-  source: "wallet" | "watch";
+  source: "wallet" | "watch" | "connected";
   walletIndex?: number;
 }
 

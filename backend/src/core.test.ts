@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { planDashboardChange } from "./aiPlanner.js";
+import { planDashboardChange, sanitizePlan } from "./aiPlanner.js";
 import { applyOperations } from "./dashboardService.js";
 import type { DashboardDocument } from "./models.js";
 
@@ -25,5 +25,13 @@ assert.ok(next.widgets.some((widget) => widget.type === "nft-gallery" && widget.
 const unsafe = await planDashboardChange("Send my funds and expose my private key", dashboard);
 assert.equal(unsafe.operations.length, 0);
 assert.ok(unsafe.warnings.length > 0);
+
+const dashboardB = { ...dashboard, _id: "dashboard-b", userId: "user-b", name: "User B", widgets: structuredClone(dashboard.widgets) };
+const beforeB = JSON.stringify(dashboardB);
+const changedA = applyOperations(dashboard, [{ type: "enable_widget", widgetType: "nft-gallery", width: "large" }]);
+assert.notEqual(JSON.stringify(changedA), JSON.stringify(dashboard));
+assert.equal(JSON.stringify(dashboardB), beforeB);
+const rejected = sanitizePlan({ intent: "customize_dashboard", explanation: "test", operations: [{ type: "enable_widget", widgetType: "execute-shell" }], warnings: [], requiresApproval: true });
+assert.equal(rejected.operations.length, 0);
 
 console.log("AvhiSafe dashboard core tests passed.");

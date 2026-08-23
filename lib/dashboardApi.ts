@@ -2,7 +2,7 @@ export type DashboardWidget = { id: string; type: string; title?: string; enable
 export type Dashboard = { _id: string; userId: string; name: string; slug: string; theme: "light" | "dark" | "system"; currency: string; density: "comfortable" | "compact" | "analytics"; isDefault: boolean; widgets: DashboardWidget[]; filters: Record<string, unknown> };
 export type DashboardPlan = { intent: "customize_dashboard" | "unsupported"; explanation: string; operations: Array<Record<string, unknown>>; warnings: string[]; requiresApproval: boolean };
 
-const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
+const backendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || "https://avhisafe-backend.onrender.com").replace(/\/$/, "");
 
 export function getDashboardUserId() {
   if (typeof window === "undefined") return "browser-preview";

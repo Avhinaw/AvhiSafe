@@ -4,6 +4,9 @@ import express, { type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { collections, createDashboardRevision, findDashboardForUser, findDefaultDashboard, listUserDashboards, listUserPermissions, listUserPublicAddresses, listUserRevisions, listUserWallets, pingDatabase } from "./db.js";
+import { planDashboardChange } from "./aiPlanner.js";
+import { applyOperations, revisionFor } from "./dashboardService.js";
+import { defaultWidgets } from "./widgetCatalog.js";
 import type { DashboardDocument, DashboardRevisionDocument } from "./models.js";
 
 const app = express();
@@ -17,101 +20,43 @@ function userIdFromRequest(request: Request) {
   if (!userId || !/^[a-zA-Z0-9_-]{1,64}$/.test(userId)) throw new Error("Missing or invalid x-user-id.");
   return userId;
 }
+function errorResponse(response: Response, error: unknown, fallback: string, status = 400) { return response.status(status).json({ error: error instanceof Error ? error.message : fallback }); }
 
-const widgetSchema = z.object({
-  id: z.string().min(1).max(100),
-  type: z.string().min(1).max(80),
-  title: z.string().max(160).optional(),
-  enabled: z.boolean(),
-  position: z.number().int().min(0).max(1000),
-  width: z.enum(["small", "medium", "large", "full"]),
-  config: z.record(z.string(), z.unknown()).default({}),
-});
-
-const dashboardInput = z.object({
-  name: z.string().trim().min(1).max(120),
-  slug: z.string().trim().regex(/^[a-z0-9-]{1,80}$/),
-  theme: z.enum(["light", "dark", "system"]),
-  currency: z.string().trim().regex(/^[A-Z]{3,8}$/),
-  density: z.enum(["comfortable", "compact", "analytics"]),
-  isDefault: z.boolean().default(false),
-  widgets: z.array(widgetSchema).max(100),
-  filters: z.record(z.string(), z.unknown()).default({}),
-});
-
+const widgetSchema = z.object({ id: z.string().min(1).max(100), type: z.string().min(1).max(80), title: z.string().max(160).optional(), enabled: z.boolean(), position: z.number().int().min(0).max(1000), width: z.enum(["small", "medium", "large", "full"]), config: z.record(z.string(), z.unknown()).default({}) });
+const dashboardInput = z.object({ name: z.string().trim().min(1).max(120), slug: z.string().trim().regex(/^[a-z0-9-]{1,80}$/), theme: z.enum(["light", "dark", "system"]), currency: z.string().trim().regex(/^[A-Z]{3,8}$/), density: z.enum(["comfortable", "compact", "analytics"]), isDefault: z.boolean().default(false), widgets: z.array(widgetSchema).max(100), filters: z.record(z.string(), z.unknown()).default({}) });
 const dashboardPatch = dashboardInput.partial().extend({ revisionSummary: z.string().trim().min(1).max(500).optional() }).strict();
+const aiInput = z.object({ dashboardId: z.string().optional(), prompt: z.string().trim().min(3).max(8000) }).strict();
+const permissionInput = z.object({ featureKey: z.string().trim().min(1).max(100), enabled: z.boolean(), config: z.record(z.string(), z.unknown()).default({}) }).strict();
+const addressInput = z.object({ chain: z.enum(["ethereum", "solana"]), address: z.string().min(20).max(128), label: z.string().max(120).optional(), notes: z.string().max(1000).optional(), source: z.enum(["watch", "generated", "connected"]).default("watch") }).strict();
+const walletInput = z.object({ chain: z.enum(["ethereum", "solana"]), address: z.string().min(20).max(128), provider: z.string().max(120), label: z.string().max(120).optional(), chainId: z.string().max(32).optional() }).strict();
 
 app.get("/health", (_request, response) => response.json({ ok: true, service: "avhisafe-backend", database: "mongodb", timestamp: new Date().toISOString() }));
+app.get("/ready", async (_request, response) => { try { await pingDatabase(); return response.json({ ok: true, database: "available" }); } catch (error) { return errorResponse(response, error, "MongoDB unavailable.", 503); } });
 
-app.get("/ready", async (_request, response) => {
-  try { await pingDatabase(); return response.json({ ok: true, database: "available" }); }
-  catch (error) { return response.status(503).json({ ok: false, database: "unavailable", message: error instanceof Error ? error.message : "MongoDB unavailable." }); }
-});
+app.get("/api/v1/dashboards", async (request, response) => { try { return response.json({ dashboards: await listUserDashboards(userIdFromRequest(request)) }); } catch (error) { return errorResponse(response, error, "Unable to list dashboards.", 401); } });
+app.post("/api/v1/dashboards", async (request, response) => { try { const userId = userIdFromRequest(request); const input = dashboardInput.parse(request.body); const now = new Date(); const dashboard: DashboardDocument = { _id: randomUUID(), userId, ...input, widgets: input.widgets.length ? input.widgets : defaultWidgets(), createdAt: now, updatedAt: now }; const dashboards = await collections.dashboards(); if (dashboard.isDefault) await dashboards.updateMany({ userId }, { $set: { isDefault: false, updatedAt: now } }); await dashboards.insertOne(dashboard); await revisionFor(dashboard, userId, "system", "Created dashboard", undefined, now); return response.status(201).json({ dashboard }); } catch (error) { return errorResponse(response, error, "Invalid dashboard."); } });
 
-app.get("/api/v1/dashboards", async (request, response) => {
-  try { return response.json({ dashboards: await listUserDashboards(userIdFromRequest(request)) }); }
-  catch (error) { return response.status(401).json({ error: error instanceof Error ? error.message : "Unable to list dashboards." }); }
-});
+app.get("/api/v1/workspace", async (request, response) => { try { const userId = userIdFromRequest(request); const dashboard = await findDefaultDashboard(userId); if (!dashboard) return response.status(404).json({ error: "Default dashboard not found." }); const [dashboards, revisions, addresses, wallets, permissions] = await Promise.all([listUserDashboards(userId), listUserRevisions(userId, dashboard._id), listUserPublicAddresses(userId), listUserWallets(userId), listUserPermissions(userId)]); return response.json({ dashboard, dashboards, revisions, addresses, wallets, permissions }); } catch (error) { return errorResponse(response, error, "Unable to load workspace.", 401); } });
 
-app.post("/api/v1/dashboards", async (request, response) => {
-  try {
-    const userId = userIdFromRequest(request);
-    const input = dashboardInput.parse(request.body);
-    const now = new Date();
-    const dashboard: DashboardDocument = { _id: randomUUID(), userId, ...input, createdAt: now, updatedAt: now };
-    const dashboards = await collections.dashboards();
-    if (dashboard.isDefault) await dashboards.updateMany({ userId }, { $set: { isDefault: false, updatedAt: now } });
-    await dashboards.insertOne(dashboard);
-    return response.status(201).json({ dashboard });
-  } catch (error) { return response.status(400).json({ error: error instanceof Error ? error.message : "Invalid dashboard." }); }
-});
+app.get("/api/v1/dashboards/:dashboardId", async (request, response) => { try { const dashboard = await findDashboardForUser(userIdFromRequest(request), request.params.dashboardId); return dashboard ? response.json({ dashboard }) : response.status(404).json({ error: "Dashboard not found." }); } catch (error) { return errorResponse(response, error, "Unable to load dashboard.", 401); } });
+app.patch("/api/v1/dashboards/:dashboardId", async (request, response) => { try { const userId = userIdFromRequest(request); const patch = dashboardPatch.parse(request.body); const current = await findDashboardForUser(userId, request.params.dashboardId); if (!current) return response.status(404).json({ error: "Dashboard not found." }); const { revisionSummary, ...changes } = patch; const now = new Date(); const next = { ...current, ...changes, updatedAt: now } as DashboardDocument; const dashboards = await collections.dashboards(); if (next.isDefault) await dashboards.updateMany({ userId, _id: { $ne: current._id } }, { $set: { isDefault: false, updatedAt: now } }); await dashboards.replaceOne({ _id: current._id, userId }, next); const revision = await revisionFor(next, userId, "manual", revisionSummary || "Updated dashboard settings", undefined, now); return response.json({ dashboard: next, revision }); } catch (error) { return errorResponse(response, error, "Invalid dashboard update."); } });
+app.delete("/api/v1/dashboards/:dashboardId", async (request, response) => { try { const userId = userIdFromRequest(request); const dashboard = await findDashboardForUser(userId, request.params.dashboardId); if (!dashboard) return response.status(404).json({ error: "Dashboard not found." }); if (dashboard.isDefault) return response.status(409).json({ error: "The default dashboard cannot be deleted." }); await (await collections.dashboards()).deleteOne({ _id: dashboard._id, userId }); return response.status(204).send(); } catch (error) { return errorResponse(response, error, "Unable to delete dashboard.", 401); } });
+app.get("/api/v1/dashboards/:dashboardId/revisions", async (request, response) => { try { const userId = userIdFromRequest(request); if (!(await findDashboardForUser(userId, request.params.dashboardId))) return response.status(404).json({ error: "Dashboard not found." }); return response.json({ revisions: await listUserRevisions(userId, request.params.dashboardId) }); } catch (error) { return errorResponse(response, error, "Unable to load revisions.", 401); } });
+app.post("/api/v1/dashboards/:dashboardId/undo", async (request, response) => { try { const userId = userIdFromRequest(request); const dashboard = await findDashboardForUser(userId, request.params.dashboardId); if (!dashboard) return response.status(404).json({ error: "Dashboard not found." }); const revisions = await listUserRevisions(userId, dashboard._id); const previous = revisions[1]; if (!previous) return response.status(409).json({ error: "No previous revision is available." }); const next = { ...dashboard, ...previous.snapshot, updatedAt: new Date() } as DashboardDocument; await (await collections.dashboards()).replaceOne({ _id: dashboard._id, userId }, next); const revision = await revisionFor(next, userId, "system", "Restored previous dashboard revision"); return response.json({ dashboard: next, revision }); } catch (error) { return errorResponse(response, error, "Unable to undo dashboard change.", 401); } });
 
-app.get("/api/v1/workspace", async (request, response) => {
-  try {
-    const userId = userIdFromRequest(request);
-    const dashboard = await findDefaultDashboard(userId);
-    if (!dashboard) return response.status(404).json({ error: "Default dashboard not found." });
-    const [dashboards, revisions, addresses, wallets, permissions] = await Promise.all([
-      listUserDashboards(userId), listUserRevisions(userId, dashboard._id), listUserPublicAddresses(userId), listUserWallets(userId), listUserPermissions(userId),
-    ]);
-    return response.json({ dashboard, dashboards, revisions, addresses, wallets, permissions });
-  } catch (error) { const message = error instanceof Error ? error.message : "Unable to load workspace."; return response.status(message.includes("x-user-id") ? 401 : 500).json({ error: message }); }
-});
+app.post("/api/v1/ai/plan", async (request, response) => { try { const userId = userIdFromRequest(request); const input = aiInput.parse(request.body); const dashboard = input.dashboardId ? await findDashboardForUser(userId, input.dashboardId) : await findDefaultDashboard(userId); if (!dashboard) return response.status(404).json({ error: "Dashboard not found." }); const plan = await planDashboardChange(input.prompt, dashboard); const requestDocument = { _id: randomUUID(), userId, dashboardId: dashboard._id, prompt: input.prompt, intent: plan.intent, status: "planned" as const, response: plan as unknown as Record<string, unknown>, createdAt: new Date() }; await (await collections.aiRequests()).insertOne(requestDocument); return response.status(201).json({ request: requestDocument, plan }); } catch (error) { return errorResponse(response, error, "Unable to create AI plan.", error instanceof Error && error.message.includes("x-user-id") ? 401 : 400); } });
+app.post("/api/v1/ai/apply", async (request, response) => { try { const userId = userIdFromRequest(request); const input = z.object({ dashboardId: z.string(), prompt: z.string().max(8000), plan: z.object({ operations: z.array(z.unknown()).max(20) }) }).strict().parse(request.body); const dashboard = await findDashboardForUser(userId, input.dashboardId); if (!dashboard) return response.status(404).json({ error: "Dashboard not found." }); const plan = await planDashboardChange(input.prompt, dashboard); const next = applyOperations(dashboard, plan.operations); await (await collections.dashboards()).replaceOne({ _id: dashboard._id, userId }, next); const revision = await revisionFor(next, userId, "ai", plan.explanation, input.prompt); await (await collections.aiRequests()).updateOne({ userId, dashboardId: dashboard._id, prompt: input.prompt }, { $set: { status: "applied", response: plan as unknown as Record<string, unknown>, completedAt: new Date() } }); return response.json({ dashboard: next, revision, plan }); } catch (error) { return errorResponse(response, error, "Unable to apply AI plan."); } });
 
-app.patch("/api/v1/dashboards/:dashboardId", async (request, response) => {
-  try {
-    const userId = userIdFromRequest(request);
-    const patch = dashboardPatch.parse(request.body);
-    const current = await findDashboardForUser(userId, request.params.dashboardId);
-    if (!current) return response.status(404).json({ error: "Dashboard not found." });
-    const { revisionSummary, ...changes } = patch;
-    const now = new Date();
-    const next = { ...current, ...changes, updatedAt: now } as DashboardDocument;
-    const dashboards = await collections.dashboards();
-    if (next.isDefault) await dashboards.updateMany({ userId, _id: { $ne: current._id } }, { $set: { isDefault: false, updatedAt: now } });
-    await dashboards.replaceOne({ _id: current._id, userId }, next);
-    const revision: DashboardRevisionDocument = { _id: randomUUID(), userId, dashboardId: current._id, source: "manual", summary: revisionSummary || "Updated dashboard settings", snapshot: { name: next.name, theme: next.theme, currency: next.currency, density: next.density, widgets: next.widgets, filters: next.filters }, createdAt: now };
-    await createDashboardRevision(revision);
-    return response.json({ dashboard: next, revision });
-  } catch (error) { return response.status(400).json({ error: error instanceof Error ? error.message : "Invalid dashboard update." }); }
-});
+app.get("/api/v1/permissions", async (request, response) => { try { return response.json({ permissions: await listUserPermissions(userIdFromRequest(request)) }); } catch (error) { return errorResponse(response, error, "Unable to list permissions.", 401); } });
+app.put("/api/v1/permissions/:featureKey", async (request, response) => { try { const userId = userIdFromRequest(request); const input = permissionInput.parse({ ...request.body, featureKey: request.params.featureKey }); const now = new Date(); const permission = { _id: `${userId}:${input.featureKey}`, userId, ...input, updatedAt: now }; await (await collections.permissions()).replaceOne({ userId, featureKey: input.featureKey }, permission, { upsert: true }); return response.json({ permission }); } catch (error) { return errorResponse(response, error, "Invalid permission."); } });
 
-app.get("/api/v1/dashboards/:dashboardId/revisions", async (request, response) => {
-  try { const userId = userIdFromRequest(request); if (!(await findDashboardForUser(userId, request.params.dashboardId))) return response.status(404).json({ error: "Dashboard not found." }); return response.json({ revisions: await listUserRevisions(userId, request.params.dashboardId) }); }
-  catch (error) { return response.status(401).json({ error: error instanceof Error ? error.message : "Unable to load revisions." }); }
-});
+app.get("/api/v1/addresses", async (request, response) => { try { return response.json({ addresses: await listUserPublicAddresses(userIdFromRequest(request)) }); } catch (error) { return errorResponse(response, error, "Unable to list addresses.", 401); } });
+app.post("/api/v1/addresses", async (request, response) => { try { const userId = userIdFromRequest(request); const input = addressInput.parse(request.body); const now = new Date(); const address = { _id: randomUUID(), userId, ...input, createdAt: now, updatedAt: now }; await (await collections.addresses()).replaceOne({ userId, chain: input.chain, address: input.address }, address, { upsert: true }); return response.status(201).json({ address }); } catch (error) { return errorResponse(response, error, "Invalid address."); } });
+app.delete("/api/v1/addresses/:addressId", async (request, response) => { try { await (await collections.addresses()).deleteOne({ _id: request.params.addressId, userId: userIdFromRequest(request) }); return response.status(204).send(); } catch (error) { return errorResponse(response, error, "Unable to delete address.", 401); } });
 
-const aiPlanInput = z.object({ dashboardId: z.string().optional(), prompt: z.string().trim().min(3).max(8000) }).strict();
-app.post("/api/v1/ai/requests", async (request, response) => {
-  try {
-    const userId = userIdFromRequest(request);
-    const input = aiPlanInput.parse(request.body);
-    if (input.dashboardId && !(await findDashboardForUser(userId, input.dashboardId))) return response.status(404).json({ error: "Dashboard not found." });
-    const requestDocument = { _id: randomUUID(), userId, dashboardId: input.dashboardId, prompt: input.prompt, status: "planned" as const, createdAt: new Date() };
-    await (await collections.aiRequests()).insertOne(requestDocument);
-    return response.status(201).json({ request: requestDocument, next: "Connect the server-side AI planner and return schema-validated widget operations." });
-  } catch (error) { return response.status(400).json({ error: error instanceof Error ? error.message : "Invalid AI request." }); }
-});
+app.get("/api/v1/wallets", async (request, response) => { try { return response.json({ wallets: await listUserWallets(userIdFromRequest(request)) }); } catch (error) { return errorResponse(response, error, "Unable to list wallets.", 401); } });
+app.put("/api/v1/wallets/:walletId", async (request, response) => { try { const userId = userIdFromRequest(request); const input = walletInput.parse(request.body); const now = new Date(); const wallet = { _id: request.params.walletId, userId, ...input, lastSeenAt: now, createdAt: now }; await (await collections.wallets()).replaceOne({ _id: wallet._id, userId }, wallet, { upsert: true }); return response.json({ wallet }); } catch (error) { return errorResponse(response, error, "Invalid wallet."); } });
+app.delete("/api/v1/wallets/:walletId", async (request, response) => { try { await (await collections.wallets()).deleteOne({ _id: request.params.walletId, userId: userIdFromRequest(request) }); return response.status(204).send(); } catch (error) { return errorResponse(response, error, "Unable to delete wallet.", 401); } });
 
 app.use((error: unknown, _request: Request, response: Response, _next: unknown) => response.status(500).json({ error: error instanceof Error ? error.message : "Unexpected server error." }));
 app.listen(port, () => console.log(`AvhiSafe MongoDB backend listening on http://localhost:${port}`));

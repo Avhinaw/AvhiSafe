@@ -1,40 +1,70 @@
-import mysql from "mysql2/promise";
-import { drizzle } from "drizzle-orm/mysql2";
-import { and, asc, eq } from "drizzle-orm";
-import { featurePermissions, publicAddresses, users, workspaceRevisions, workspaceWidgets, workspaces } from "./schema.js";
+import { MongoClient, type Db } from "mongodb";
+import type { AIRequestDocument, ConnectedWalletDocument, DashboardDocument, DashboardRevisionDocument, FeaturePermissionDocument, PortfolioSnapshotDocument, PublicAddressDocument, UserDocument } from "./models.js";
 
-let pool: mysql.Pool | undefined;
+let client: MongoClient | undefined;
+let database: Db | undefined;
 
-export function getDb() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is not configured.");
-  pool ??= mysql.createPool(url);
-  return drizzle(pool);
+export async function getDb(): Promise<Db> {
+  if (database) return database;
+  const uri = process.env.MONGODB_URI;
+  const dbName = process.env.MONGODB_DB || "avhisafe";
+  if (!uri) throw new Error("MONGODB_URI is not configured.");
+  client ??= new MongoClient(uri);
+  await client.connect();
+  database = client.db(dbName);
+  return database;
 }
 
-export async function findUser(userId: string) {
-  return getDb().select().from(users).where(eq(users.id, userId)).limit(1);
+export const collections = {
+  users: async () => (await getDb()).collection<UserDocument>("users"),
+  dashboards: async () => (await getDb()).collection<DashboardDocument>("dashboards"),
+  revisions: async () => (await getDb()).collection<DashboardRevisionDocument>("dashboard_revisions"),
+  aiRequests: async () => (await getDb()).collection<AIRequestDocument>("ai_requests"),
+  permissions: async () => (await getDb()).collection<FeaturePermissionDocument>("feature_permissions"),
+  wallets: async () => (await getDb()).collection<ConnectedWalletDocument>("connected_wallets"),
+  addresses: async () => (await getDb()).collection<PublicAddressDocument>("public_addresses"),
+  snapshots: async () => (await getDb()).collection<PortfolioSnapshotDocument>("portfolio_snapshots"),
+};
+
+export async function findDefaultDashboard(userId: string) {
+  return (await collections.dashboards()).findOne({ userId, isDefault: true });
 }
 
-export async function findDefaultWorkspace(userId: string) {
-  const rows = await getDb().select().from(workspaces).where(and(eq(workspaces.userId, userId), eq(workspaces.isDefault, true))).limit(1);
-  return rows[0] ?? null;
+export async function findDashboardForUser(userId: string, dashboardId: string) {
+  return (await collections.dashboards()).findOne({ _id: dashboardId, userId });
 }
 
-export async function listWidgets(userId: string, workspaceId: string) {
-  const workspace = await getDb().select({ id: workspaces.id }).from(workspaces).where(and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId))).limit(1);
-  if (!workspace[0]) throw new Error("Workspace not found.");
-  return getDb().select().from(workspaceWidgets).where(eq(workspaceWidgets.workspaceId, workspaceId)).orderBy(asc(workspaceWidgets.position));
+export async function listUserDashboards(userId: string) {
+  return (await collections.dashboards()).find({ userId }).sort({ updatedAt: -1 }).toArray();
 }
 
-export async function listPublicAddresses(userId: string) {
-  return getDb().select().from(publicAddresses).where(eq(publicAddresses.userId, userId));
+export async function listUserRevisions(userId: string, dashboardId: string) {
+  return (await collections.revisions()).find({ userId, dashboardId }).sort({ createdAt: -1 }).limit(50).toArray();
 }
 
-export async function listFeaturePermissions(userId: string) {
-  return getDb().select().from(featurePermissions).where(eq(featurePermissions.userId, userId));
+export async function listUserPublicAddresses(userId: string) {
+  return (await collections.addresses()).find({ userId }).sort({ updatedAt: -1 }).toArray();
 }
 
-export async function createRevision(input: typeof workspaceRevisions.$inferInsert) {
-  await getDb().insert(workspaceRevisions).values(input);
+export async function listUserWallets(userId: string) {
+  return (await collections.wallets()).find({ userId }).sort({ lastSeenAt: -1 }).toArray();
+}
+
+export async function listUserPermissions(userId: string) {
+  return (await collections.permissions()).find({ userId }).sort({ featureKey: 1 }).toArray();
+}
+
+export async function createDashboardRevision(input: DashboardRevisionDocument) {
+  await (await collections.revisions()).insertOne(input);
+}
+
+export async function pingDatabase() {
+  await (await getDb()).command({ ping: 1 });
+  return true;
+}
+
+export async function closeDatabase() {
+  if (client) await client.close();
+  client = undefined;
+  database = undefined;
 }

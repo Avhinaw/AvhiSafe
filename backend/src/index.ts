@@ -11,8 +11,8 @@ import type { DashboardDocument, DashboardRevisionDocument } from "./models.js";
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
-const origin = process.env.CORS_ORIGIN || "http://localhost:3000";
-app.use(cors({ origin }));
+const allowedOrigins = (process.env.CORS_ORIGIN || "*").split(",").map((value) => value.trim()).filter(Boolean);
+app.use(cors({ origin: (requestOrigin, callback) => { if (!requestOrigin || allowedOrigins.includes("*") || allowedOrigins.includes(requestOrigin)) callback(null, true); else callback(new Error("CORS origin not allowed")); } }));
 app.use(express.json({ limit: "512kb" }));
 
 function userIdFromRequest(request: Request) {

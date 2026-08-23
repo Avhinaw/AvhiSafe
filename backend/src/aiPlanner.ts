@@ -59,7 +59,7 @@ function fallbackPlan(prompt: string): DashboardPlan {
   return { intent: "customize_dashboard", explanation: `Prepared ${operations.length} safe dashboard customization operation${operations.length === 1 ? "" : "s"}.`, operations, warnings, requiresApproval: true };
 }
 
-function sanitizePlan(raw: unknown): DashboardPlan {
+export function sanitizePlan(raw: unknown): DashboardPlan {
   const candidate = raw as Partial<DashboardPlan>;
   const operations = Array.isArray(candidate.operations) ? candidate.operations.filter((operation) => {
     if (!operation || typeof operation !== "object" || typeof (operation as { type?: unknown }).type !== "string") return false;

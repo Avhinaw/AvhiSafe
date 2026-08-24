@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { planDashboardChange, sanitizePlan } from "./aiPlanner.js";
 import { applyOperations } from "./dashboardService.js";
-import type { DashboardDocument } from "./models.js";
+import type { DashboardDocument } from "./models/index.js";
 
 delete process.env.AI_API_KEY;
 delete process.env.AI_API_BASE;

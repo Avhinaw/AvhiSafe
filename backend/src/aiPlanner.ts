@@ -1,4 +1,4 @@
-import type { DashboardDocument } from "./models.js";
+import type { DashboardDocument } from "./models/index.js";
 import { allowedWidgetTypes, type DashboardOperation, type DashboardPlan, widgetCatalog } from "./widgetCatalog.js";
 
 const operationSchema = {

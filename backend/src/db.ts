@@ -1,5 +1,5 @@
 import { MongoClient, type Db } from "mongodb";
-import type { AIRequestDocument, ConnectedWalletDocument, DashboardDocument, DashboardRevisionDocument, FeaturePermissionDocument, PortfolioSnapshotDocument, PublicAddressDocument, UserDocument } from "./models.js";
+import type { AIRequestDocument, ConnectedWalletDocument, DashboardDocument, DashboardRevisionDocument, FeaturePermissionDocument, PortfolioSnapshotDocument, PublicAddressDocument, UserDocument } from "./models/index.js";
 
 let client: MongoClient | undefined;
 let database: Db | undefined;

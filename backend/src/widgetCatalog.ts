@@ -1,4 +1,4 @@
-import type { DashboardWidget, WidgetWidth } from "./models.js";
+import type { DashboardWidget, WidgetWidth } from "./models/index.js";
 
 export const widgetCatalog = [
   { type: "portfolio-value", label: "Portfolio value", description: "Total estimated portfolio value", defaultWidth: "large" as WidgetWidth },

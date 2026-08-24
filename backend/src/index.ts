@@ -7,7 +7,7 @@ import { collections, createDashboardRevision, findDashboardForUser, findDefault
 import { planDashboardChange, sanitizePlan } from "./aiPlanner.js";
 import { applyOperations, revisionFor } from "./dashboardService.js";
 import { defaultWidgets } from "./widgetCatalog.js";
-import type { DashboardDocument, DashboardRevisionDocument } from "./models.js";
+import type { DashboardDocument, DashboardRevisionDocument } from "./models/index.js";
 
 const app = express();
 const port = Number(process.env.PORT || 4000);

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { DashboardDocument, DashboardRevisionDocument } from "./models.js";
+import type { DashboardDocument, DashboardRevisionDocument } from "./models/index.js";
 import type { DashboardOperation } from "./widgetCatalog.js";
 import { createDashboardRevision } from "./db.js";
 

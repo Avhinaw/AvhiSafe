@@ -5,7 +5,7 @@ import { widgetCatalog } from "./widgetCatalog.js";
 function providerConfig() {
   const apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
   const baseUrl = process.env.AI_API_BASE || process.env.OPENAI_API_BASE;
-  const model = process.env.AI_MODEL || "gpt-5-mini";
+  const model = process.env.AI_MODEL || "gemini-3.6-flash";
   if (!apiKey || !baseUrl) throw new Error("AI provider is not configured. Set AI_API_KEY, AI_API_BASE, and AI_MODEL on the backend.");
   return { apiKey, baseUrl: baseUrl.replace(/\/$/, ""), model };
 }
@@ -87,6 +87,6 @@ export async function planDashboardUi(prompt: string, dashboard: DashboardDocume
 
 export function aiProviderStatus() {
   const configured = Boolean(process.env.AI_API_KEY || process.env.OPENAI_API_KEY) && Boolean(process.env.AI_API_BASE || process.env.OPENAI_API_BASE);
-  const model = process.env.AI_MODEL || "gpt-5-mini";
+  const model = process.env.AI_MODEL || "gemini-3.6-flash";
   return { configured, model, mode: configured ? "ai" : "unconfigured" } as const;
 }

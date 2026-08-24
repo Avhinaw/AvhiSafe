@@ -13,6 +13,14 @@ MONGODB_DB=avhisafe
 
 MongoDB Atlas connection strings are also supported. Do not commit `.env` files.
 
+For the Google AI Studio OpenAI-compatible endpoint, configure the model on the server only:
+
+```env
+AI_API_BASE=https://generativelanguage.googleapis.com/v1beta/openai/
+AI_MODEL=gemini-3.6-flash
+AI_API_KEY=your_fresh_provider_key
+```
+
 ## Run the backend
 
 ```bash
@@ -73,7 +81,7 @@ Every user-owned document contains a `userId`. Dashboard reads and writes must a
 
 The current development authentication boundary uses `x-user-id` only to exercise ownership-aware routes. It is not production authentication. Before deployment, replace it with real session or OAuth middleware and derive the user ID server-side rather than trusting a client-provided header.
 
-The AI UI endpoint sends the prompt to a server-side model. The model returns a complete declarative UI document; the backend validates it with a strict Zod schema, previews it, and persists it only after explicit user approval. There is no keyword planner or client-side AI fallback. If the provider is unavailable, the UI reports the failure instead of pretending that an AI change happened.
+The AI UI endpoint sends the prompt to a server-side model. The model returns a complete declarative UI document; the backend validates it with a strict Zod schema, previews it, and persists it only after explicit user approval. There is no keyword planner or client-side AI fallback. If the provider is unavailable, the UI reports the failure instead of pretending that an AI change happened. For the current Google provider configuration, set `AI_MODEL=gemini-3.6-flash`; older `gemini-2.5-flash` configurations are unavailable to new users.
 
 Generated UI is intentionally a safe declarative component document rather than executable JSX or JavaScript. The trusted renderer supports registered wallet/portfolio widgets, text, metrics, cards, bounded layouts, and bounded accent presets. Arbitrary model-generated code is never executed in the wallet application.
 

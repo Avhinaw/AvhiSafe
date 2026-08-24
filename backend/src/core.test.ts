@@ -11,7 +11,7 @@ const previousBase = process.env.AI_API_BASE;
 const previousModel = process.env.AI_MODEL;
 process.env.AI_API_KEY = "test-key";
 process.env.AI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/";
-process.env.AI_MODEL = "gemini-2.5-flash";
+process.env.AI_MODEL = "gemini-3.6-flash";
 let providerRequest: Record<string, unknown> | undefined;
 globalThis.fetch = async (_input, init) => {
   providerRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;

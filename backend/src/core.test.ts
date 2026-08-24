@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { planDashboardUi } from "./aiUiPlanner.js";
+import { aiApplyInput } from "./aiApplySchema.js";
 import { defaultUiSpec, sanitizeUiSpec } from "./uiSchema.js";
 import type { DashboardDocument } from "./models/index.js";
 
@@ -36,6 +37,10 @@ const isolatedB = { userId: "user-b", dashboardId: "dashboard-b", spec: defaultU
 assert.equal(isolatedA.userId, "user-a");
 assert.equal(isolatedB.userId, "user-b");
 assert.notDeepEqual(isolatedA.spec, isolatedB.spec);
+const applyPayload = { dashboardId: "dashboard-a", prompt: "Create a risk cockpit", plan: { intent: "customize_ui", explanation: "AI UI", warnings: [], requiresApproval: true, ui: defaultUiSpec(), source: "ai", model: "gemini-3.6-flash" } };
+assert.equal(aiApplyInput.parse(applyPayload).plan.source, "ai");
+assert.equal(aiApplyInput.parse(applyPayload).plan.model, "gemini-3.6-flash");
+assert.throws(() => aiApplyInput.parse({ ...applyPayload, plan: { ...applyPayload.plan, source: "local", arbitraryCode: "alert(1)" } }));
 
 globalThis.fetch = originalFetch;
 if (previousKey === undefined) delete process.env.AI_API_KEY; else process.env.AI_API_KEY = previousKey;

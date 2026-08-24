@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { planDashboardUi } from "./aiUiPlanner.js";
+import { aiProviderStatus, planDashboardUi } from "./aiUiPlanner.js";
 import { aiApplyInput } from "./aiApplySchema.js";
 import { defaultUiSpec, sanitizeUiSpec } from "./uiSchema.js";
 import type { DashboardDocument } from "./models/index.js";
@@ -12,7 +12,7 @@ const previousBase = process.env.AI_API_BASE;
 const previousModel = process.env.AI_MODEL;
 process.env.AI_API_KEY = "test-key";
 process.env.AI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/";
-process.env.AI_MODEL = "gemini-3.6-flash";
+process.env.AI_MODEL = "gemini-2.5-flash";
 let providerRequest: Record<string, unknown> | undefined;
 globalThis.fetch = async (_input, init) => {
   providerRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -24,11 +24,14 @@ assert.equal(plan.intent, "customize_ui");
 assert.equal(plan.ui?.title, "Risk cockpit");
 assert.equal(plan.ui?.components[0]?.type, "widget");
 assert.equal(providerRequest?.max_tokens, 16384);
+assert.equal(aiProviderStatus().model, "gemini-3.6-flash");
 assert.equal(providerRequest?.max_completion_tokens, undefined);
 const systemMessage = JSON.stringify(providerRequest?.messages);
 assert.match(systemMessage, /untrusted data/i);
 
-assert.throws(() => sanitizeUiSpec({ ...defaultUiSpec(), components: [{ type: "widget", id: "bad", widgetType: "execute-shell", width: "large" }] }));
+assert.throws(() => sanitizeUiSpec({ ...defaultUiSpec(), components: [{ type: "widget", id: "bad", widgetType: "shell", title: "unsafe", width: "full" }] }));
+const richSpec = sanitizeUiSpec({ ...defaultUiSpec(), components: [{ type: "badge", id: "status", label: "Read-only", tone: "success" }, { type: "list", id: "checklist", title: "Safety checks", items: ["Review approvals", "Verify recipient"], tone: "info" }, { type: "divider", id: "divider", label: "Controls" }] });
+assert.equal(richSpec.components.length, 3);
 assert.throws(() => sanitizeUiSpec({ ...defaultUiSpec(), components: [{ type: "script", id: "bad", code: "alert(1)" }] }));
 assert.throws(() => sanitizeUiSpec({ ...defaultUiSpec(), components: [{ type: "widget", id: "same", widgetType: "security-score", width: "medium" }, { type: "text", id: "same", text: "duplicate", emphasis: "normal" }] }));
 

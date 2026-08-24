@@ -4,6 +4,7 @@ import { allowedWidgetTypes } from "./widgetCatalog.js";
 const safeId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/);
 const safeText = z.string().trim().max(240);
 const widgetWidth = z.enum(["small", "medium", "large", "full"]);
+const cardTone = z.enum(["neutral", "accent", "success", "warning", "info", "danger"]);
 
 export const uiComponentSchema = z.discriminatedUnion("type", [
   z.object({
@@ -27,10 +28,28 @@ export const uiComponentSchema = z.discriminatedUnion("type", [
     format: z.enum(["number", "currency", "percent"]),
   }).strict(),
   z.object({
+    type: z.literal("badge"),
+    id: safeId,
+    label: safeText,
+    tone: cardTone.default("neutral"),
+  }).strict(),
+  z.object({
+    type: z.literal("list"),
+    id: safeId,
+    title: safeText.optional(),
+    items: z.array(z.string().trim().min(1).max(180)).min(1).max(8),
+    tone: cardTone.default("neutral"),
+  }).strict(),
+  z.object({
+    type: z.literal("divider"),
+    id: safeId,
+    label: safeText.optional(),
+  }).strict(),
+  z.object({
     type: z.literal("card"),
     id: safeId,
     title: safeText.optional(),
-    tone: z.enum(["neutral", "accent", "success", "warning", "info", "danger"]).default("neutral"),
+    tone: cardTone.default("neutral"),
     text: z.string().trim().max(500).optional(),
     body: z.string().trim().max(500).optional(),
     content: z.string().trim().max(500).optional(),
@@ -93,7 +112,7 @@ export const uiResponseSchema = {
             type: "object",
             additionalProperties: false,
             properties: {
-              type: { type: "string", enum: ["widget", "text", "metric", "card"] },
+              type: { type: "string", enum: ["widget", "text", "metric", "card", "badge", "list", "divider"] },
               id: { type: "string" },
               widgetType: { anyOf: [{ type: "string", enum: [...allowedWidgetTypes] }, { type: "null" }] },
               title: { anyOf: [{ type: "string" }, { type: "null" }] },

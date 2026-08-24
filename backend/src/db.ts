@@ -1,4 +1,6 @@
 import { MongoClient, type Db } from "mongodb";
+import { randomUUID } from "node:crypto";
+import { defaultWidgets } from "./widgetCatalog.js";
 import type { AIRequestDocument, ConnectedWalletDocument, DashboardDocument, DashboardRevisionDocument, FeaturePermissionDocument, PortfolioSnapshotDocument, PublicAddressDocument, UserDocument } from "./models/index.js";
 
 let client: MongoClient | undefined;
@@ -28,6 +30,19 @@ export const collections = {
 
 export async function findDefaultDashboard(userId: string) {
   return (await collections.dashboards()).findOne({ userId, isDefault: true });
+}
+
+export async function ensureDefaultDashboard(userId: string): Promise<DashboardDocument> {
+  const existing = await findDefaultDashboard(userId);
+  if (existing) return existing;
+  const now = new Date();
+  const dashboard: DashboardDocument = {
+    _id: randomUUID(), userId, slug: "main", name: "My AvhiSafe dashboard", theme: "system", currency: "USD", density: "comfortable", isDefault: true,
+    widgets: defaultWidgets(), filters: {}, createdAt: now, updatedAt: now,
+  };
+  const dashboards = await collections.dashboards();
+  await dashboards.updateOne({ userId, isDefault: true }, { $setOnInsert: dashboard }, { upsert: true });
+  return (await findDefaultDashboard(userId)) || dashboard;
 }
 
 export async function findDashboardForUser(userId: string, dashboardId: string) {

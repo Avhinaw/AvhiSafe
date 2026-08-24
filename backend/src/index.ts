@@ -13,8 +13,9 @@ import type { DashboardDocument, DashboardRevisionDocument } from "./models/inde
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
-const allowedOrigins = (process.env.CORS_ORIGIN || "*").split(",").map((value) => value.trim()).filter(Boolean);
-app.use(cors({ origin: (requestOrigin, callback) => { if (!requestOrigin || allowedOrigins.includes("*") || allowedOrigins.includes(requestOrigin)) callback(null, true); else callback(new Error("CORS origin not allowed")); } }));
+const configuredOrigins = (process.env.CORS_ORIGIN || "").split(",").map((value) => value.trim().replace(/\/$/, "")).filter(Boolean);
+const allowedOrigins = new Set(["https://avhisafe.netlify.app", ...configuredOrigins]);
+app.use(cors({ origin: (requestOrigin, callback) => { const normalizedOrigin = requestOrigin?.replace(/\/$/, ""); if (!normalizedOrigin || configuredOrigins.includes("*") || allowedOrigins.has(normalizedOrigin)) callback(null, true); else callback(new Error("CORS origin not allowed")); } }));
 app.use(express.json({ limit: "512kb" }));
 
 function userIdFromRequest(request: Request) {

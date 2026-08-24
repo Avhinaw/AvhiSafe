@@ -59,6 +59,7 @@ async function solanaRpc<T>(method: string, params: unknown[]): Promise<T> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
+    signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) throw new Error(`Solana RPC returned ${response.status}`);
   const payload = await response.json();
@@ -69,7 +70,7 @@ async function solanaRpc<T>(method: string, params: unknown[]): Promise<T> {
 async function fetchPrices(): Promise<Record<string, { usd?: number; usd_24h_change?: number }>> {
   const response = await fetch(
     "https://api.coingecko.com/api/v3/simple/price?ids=solana,ethereum&vs_currencies=usd&include_24hr_change=true",
-    { headers: { Accept: "application/json" } }
+    { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15000) }
   );
   if (!response.ok) return {};
   return response.json();
@@ -154,8 +155,8 @@ async function loadSolana(address: PortfolioAddress): Promise<PortfolioSnapshot>
 
 async function loadEthereum(address: PortfolioAddress): Promise<PortfolioSnapshot> {
   const [addressResponse, transactionsResponse] = await Promise.all([
-    fetch(`${ETHPLORER_API}/getAddressInfo/${address.address}?apiKey=freekey&showTxsCount=true`),
-    fetch(`${ETHPLORER_API}/getAddressTransactions/${address.address}?apiKey=freekey&limit=12`),
+    fetch(`${ETHPLORER_API}/getAddressInfo/${address.address}?apiKey=freekey&showTxsCount=true`, { signal: AbortSignal.timeout(15000) }),
+    fetch(`${ETHPLORER_API}/getAddressTransactions/${address.address}?apiKey=freekey&limit=12`, { signal: AbortSignal.timeout(15000) }),
   ]);
   if (!addressResponse.ok) throw new Error(`Ethereum indexer returned ${addressResponse.status}`);
   const addressData = await addressResponse.json();

@@ -32,18 +32,83 @@ function parseJson(content: string): unknown {
   return JSON.parse(fenced[1]);
 }
 
+function asSafeString(value: unknown): string | undefined {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return undefined;
+}
+
+function toneAlias(value: unknown) {
+  const key = asSafeString(value)?.toLowerCase();
+  return key === "positive" || key === "good" || key === "ok" ? "success" : key === "negative" || key === "error" || key === "critical" ? "danger" : key === "caution" || key === "alert" ? "warning" : key === "primary" || key === "brand" ? "accent" : key === "muted" || key === "secondary" ? "neutral" : ["neutral", "accent", "success", "warning", "info", "danger"].includes(key || "") ? key : undefined;
+}
+
+function normalizeUiComponent(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const source = raw as Record<string, unknown>;
+  const typeAliases: Record<string, string> = { status: "badge", state: "badge", checklist: "list", bullets: "list", separator: "divider", section: "divider", paragraph: "text", copy: "text", kpi: "metric", stat: "metric" };
+  const component = { ...source, type: typeof source.type === "string" ? typeAliases[source.type] || source.type : source.type } as Record<string, unknown>;
+  const variant = component.variant;
+  delete component.variant;
+  if (component.type === "badge") {
+    component.label ??= asSafeString(component.value) || asSafeString(component.title) || "Status";
+    component.tone ??= toneAlias(variant) || "neutral";
+  } else if (component.type === "card") {
+    component.text ??= asSafeString(component.value);
+    component.tone ??= toneAlias(variant) || "neutral";
+  } else if (component.type === "metric") {
+    component.format ??= variant === "money" || variant === "usd" ? "currency" : variant === "ratio" || variant === "percentage" ? "percent" : "number";
+  }
+  delete component.value;
+  if (component.type === "list" && Array.isArray(component.items)) {
+    component.items = component.items.map((item) => {
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        const itemRecord = item as Record<string, unknown>;
+        const label = asSafeString(itemRecord.label) || asSafeString(itemRecord.title) || asSafeString(itemRecord.name) || asSafeString(itemRecord.text) || asSafeString(itemRecord.description) || asSafeString(itemRecord.key);
+        const value = asSafeString(itemRecord.value) || asSafeString(itemRecord.status);
+        return label && value ? `${label}: ${value}` : label || value;
+      }
+      return asSafeString(item);
+    }).filter((item): item is string => Boolean(item));
+  }
+  return component;
+}
+
+function normalizeUiDocument(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const source = raw as Record<string, unknown>;
+  const ui = { ...source } as Record<string, unknown>;
+  const theme = ui.theme && typeof ui.theme === "object" && !Array.isArray(ui.theme) ? { ...(ui.theme as Record<string, unknown>) } : {};
+  const themeAliases: Record<string, string> = { font: "typography", fontFamily: "typography", fontStyle: "typography", spacing: "density", background: "surface", borderRadius: "radius", theme: "mode" };
+  for (const [alias, field] of Object.entries(themeAliases)) if (theme[field] === undefined && theme[alias] !== undefined) theme[field] = theme[alias];
+  const aliases: Record<string, Record<string, string>> = {
+    typography: { mono: "technical", monospace: "technical", monospaced: "technical", code: "technical", developer: "technical", cyber: "technical", sans: "neutral", modern: "neutral", clean: "neutral", minimal: "neutral", serif: "editorial", classic: "editorial", luxury: "editorial" },
+    surface: { transparent: "flat", frosted: "glass", translucent: "glass", elevated: "soft" },
+    radius: { square: "sharp", round: "rounded", soft: "rounded", circular: "pill" },
+    density: { dense: "compact", spacious: "comfortable", roomy: "comfortable" },
+    mode: { night: "dark", day: "light", auto: "system" },
+  };
+  for (const field of Object.keys(aliases)) {
+    const value = asSafeString(theme[field])?.toLowerCase();
+    if (value && aliases[field][value]) theme[field] = aliases[field][value];
+  }
+  ui.theme = theme;
+  if (Array.isArray(ui.components)) ui.components = ui.components.map(normalizeUiComponent);
+  return ui;
+}
+
 function sanitizeUiPlan(raw: unknown, current: UISpec): UIPlan {
   if (!raw || typeof raw !== "object") throw new Error("AI provider returned an invalid UI plan.");
   const candidate = raw as Record<string, unknown>;
   const intent = candidate.intent === "customize_ui" ? "customize_ui" : candidate.intent === "unsupported" ? "unsupported" : null;
   if (!intent) throw new Error(`AI provider returned an unknown UI intent. Keys: ${Object.keys(candidate).join(",")}.`);
   const rawUi = candidate.ui ?? current;
-  if (rawUi && typeof rawUi === "object" && "components" in rawUi && Array.isArray(rawUi.components)) {
-    for (const component of rawUi.components) {
+  const normalizedUi = normalizeUiDocument(rawUi);
+  if (normalizedUi && typeof normalizedUi === "object" && "components" in normalizedUi && Array.isArray(normalizedUi.components)) {
+    for (const component of normalizedUi.components) {
       if (component && typeof component === "object") for (const [key, value] of Object.entries(component)) if (value === null) delete (component as Record<string, unknown>)[key];
     }
   }
-  const ui = sanitizeUiSpec(rawUi);
+  const ui = sanitizeUiSpec(normalizedUi);
   const warnings = Array.isArray(candidate.warnings) ? candidate.warnings.filter((item): item is string => typeof item === "string").slice(0, 10) : [];
   const explanation = typeof candidate.explanation === "string" ? candidate.explanation.slice(0, 500) : "AI-generated UI update.";
   return { intent, explanation, warnings, requiresApproval: intent === "customize_ui", ui, source: "ai", model: typeof candidate.model === "string" ? candidate.model : undefined };

@@ -31,6 +31,14 @@ assert.equal(providerRequest?.max_completion_tokens, undefined);
 const systemMessage = JSON.stringify(providerRequest?.messages);
 assert.match(systemMessage, /untrusted data/i);
 
+globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ intent: "customize_ui", explanation: "Alias-compatible plan", warnings: [], requiresApproval: true, ui: { version: 1, title: "Compatibility view", description: "Provider-shaped output", accentPreset: "cyan", theme: { mode: "dark", surface: "soft", radius: "rounded", typography: "monospace", density: "compact" }, layout: "grid", columns: 2, components: [{ type: "status", id: "wallet-status", value: "Read-only", variant: "positive" }, { type: "stat", id: "total-value", label: "Total value", source: "portfolio-value", variant: "money" }, { type: "checklist", id: "checks", title: "Review checks", items: [{ label: "Approvals", value: "Review" }, { name: "Recipient", status: "Verify" }] }, { type: "status", id: "risk-status", value: "Low risk", variant: "primary" }] } }) } }] }), { status: 200 });
+const aliasPlan = await planDashboardUi("Create a compatibility view", dashboard, defaultUiSpec());
+assert.equal(aliasPlan.ui?.theme.typography, "technical");
+assert.equal(aliasPlan.ui?.components[0]?.type, "badge");
+assert.equal(aliasPlan.ui?.components[1]?.type, "metric");
+assert.equal(aliasPlan.ui?.components[2]?.type, "list");
+assert.deepEqual(aliasPlan.ui?.components[2]?.type === "list" ? aliasPlan.ui.components[2].items : [], ["Approvals: Review", "Recipient: Verify"]);
+
 assert.throws(() => sanitizeUiSpec({ ...defaultUiSpec(), components: [{ type: "widget", id: "bad", widgetType: "shell", title: "unsafe", width: "full" }] }));
 const richSpec = sanitizeUiSpec({ ...defaultUiSpec(), components: [{ type: "badge", id: "status", label: "Read-only", tone: "success" }, { type: "list", id: "checklist", title: "Safety checks", items: ["Review approvals", "Verify recipient"], tone: "info" }, { type: "divider", id: "divider", label: "Controls" }] });
 assert.equal(richSpec.components.length, 3);

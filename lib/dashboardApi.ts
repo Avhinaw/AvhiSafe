@@ -8,7 +8,7 @@ export type UIComponent =
   | { type: "badge"; id: string; label: string; tone: "neutral" | "accent" | "success" | "warning" | "info" | "danger" }
   | { type: "list"; id: string; title?: string; items: string[]; tone: "neutral" | "accent" | "success" | "warning" | "info" | "danger" }
   | { type: "divider"; id: string; label?: string };
-export type UISpec = { version: 1; title: string; description: string; accentPreset: "cyan" | "violet" | "emerald" | "amber" | "rose" | "slate"; layout: "stack" | "grid"; columns: number; components: UIComponent[] };
+export type UISpec = { version: 1; title: string; description: string; accentPreset: "cyan" | "violet" | "emerald" | "amber" | "rose" | "slate"; theme: { mode: "light" | "dark" | "system"; surface: "flat" | "soft" | "glass"; radius: "sharp" | "rounded" | "pill"; typography: "neutral" | "technical" | "editorial"; density: "comfortable" | "compact" }; layout: "stack" | "grid"; columns: number; components: UIComponent[] };
 export type UIDocument = { _id: string; userId: string; dashboardId: string; version: number; source: "ai" | "system"; prompt?: string; spec: UISpec; createdAt: string; updatedAt: string };
 export type DashboardPlan = { intent: "customize_ui" | "unsupported"; explanation: string; warnings: string[]; requiresApproval: boolean; ui: UISpec | null; source: "ai"; model?: string; requestId?: string };
 export type AiStatus = { configured: boolean; mode: "ai" | "unconfigured"; model: string };

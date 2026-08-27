@@ -42,11 +42,13 @@ function GeneratedComponent({ component, preview = false }: { component: UICompo
 }
 
 function gridClass(columns: number) { return columns >= 4 ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4" : columns === 3 ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-1 sm:grid-cols-2"; }
+function themeClasses(theme: UISpec["theme"]) { const mode = theme.mode === "dark" ? "dark bg-slate-950 text-slate-100" : ""; const surface = theme.surface === "flat" ? "bg-background" : theme.surface === "glass" ? "bg-background/50 shadow-xl backdrop-blur" : "bg-background/80 shadow-sm"; const radius = theme.radius === "sharp" ? "rounded-lg" : theme.radius === "pill" ? "rounded-[2.5rem]" : "rounded-3xl"; const typography = theme.typography === "technical" ? "font-mono" : theme.typography === "editorial" ? "font-serif" : ""; const density = theme.density === "compact" ? "p-3 sm:p-4" : "p-4 sm:p-6"; return { mode, surface, radius, typography, density }; }
 
 function GeneratedUi({ document, preview = false }: { document: UIDocument; preview?: boolean }) {
   const spec = document.spec;
   const components = useMemo(() => spec.components, [spec.components]);
-  return <div className={`min-w-0 overflow-hidden rounded-3xl border p-4 sm:p-6 ${accentClasses[spec.accentPreset]}`} data-ui-version={document.version} data-ui-source={document.source}><div className="mb-6 min-w-0"><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary/50">AI-generated personal interface · v{document.version}</p><h3 className="mt-2 break-words text-2xl font-black tracking-tight sm:text-3xl">{spec.title}</h3><p className="mt-2 max-w-2xl break-words text-sm leading-6 text-primary/60">{spec.description}</p></div><div className={`${spec.layout === "grid" ? `grid ${gridClass(spec.columns)}` : "flex flex-col"} min-w-0 gap-4`}>{components.map((component) => <GeneratedComponent key={component.id} component={component} preview={preview} />)}</div></div>;
+  const theme = themeClasses(spec.theme);
+  return <div className={`${theme.mode} ${theme.surface} ${theme.radius} ${theme.typography} ${theme.density} min-w-0 overflow-hidden border ${accentClasses[spec.accentPreset]}`} data-ui-version={document.version} data-ui-source={document.source}><div className="mb-6 min-w-0"><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary/50">AI-generated personal interface · v{document.version}</p><h3 className="mt-2 break-words text-2xl font-black tracking-tight sm:text-3xl">{spec.title}</h3><p className="mt-2 max-w-2xl break-words text-sm leading-6 text-primary/60">{spec.description}</p></div><div className={`${spec.layout === "grid" ? `grid ${gridClass(spec.columns)}` : "flex flex-col"} min-w-0 gap-4`}>{components.map((component) => <GeneratedComponent key={component.id} component={component} preview={preview} />)}</div></div>;
 }
 
 export default function DynamicDashboard() {

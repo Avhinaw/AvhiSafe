@@ -75,7 +75,6 @@ export async function planDashboardUi(prompt: string, dashboard: DashboardDocume
       messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
       ...tokenLimit(model, baseUrl),
     }),
-    signal: AbortSignal.timeout(30000),
   });
   if (!response.ok) { const body = await response.text(); throw new Error(`AI provider returned ${response.status}${body ? `: ${body.slice(0, 240)}` : "."}`); }
   const payload = await response.json() as { choices?: Array<{ finish_reason?: string; message?: { content?: string | Array<string | { text?: string }> | null } }>; error?: unknown };

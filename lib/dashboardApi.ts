@@ -27,18 +27,9 @@ export function getDashboardUserId() {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
-  try {
-    const response = await fetch(`${backendUrl}${path}`, { ...options, signal: options.signal || controller.signal, headers: { "Content-Type": "application/json", "x-user-id": getDashboardUserId(), ...(options.headers || {}) } });
-    if (!response.ok) throw new Error((await response.json().catch(() => ({})) as { error?: string }).error || `Backend request failed (${response.status}).`);
-    return response.status === 204 ? (undefined as T) : response.json() as Promise<T>;
-  } catch (error) {
-    if (controller.signal.aborted) throw new Error("The AvhiSafe backend took too long to respond. Please retry.");
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+  const response = await fetch(`${backendUrl}${path}`, { ...options, headers: { "Content-Type": "application/json", "x-user-id": getDashboardUserId(), ...(options.headers || {}) } });
+  if (!response.ok) throw new Error((await response.json().catch(() => ({})) as { error?: string }).error || `Backend request failed (${response.status}).`);
+  return response.status === 204 ? (undefined as T) : response.json() as Promise<T>;
 }
 
 export function loadWorkspace() { return request<{ dashboard: Dashboard; uiDocument: UIDocument; dashboards: Dashboard[]; revisions: unknown[]; uiRevisions: unknown[]; addresses: unknown[]; wallets: unknown[]; permissions: unknown[] }>("/api/v1/workspace"); }

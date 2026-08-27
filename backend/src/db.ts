@@ -1,7 +1,7 @@
 import { MongoClient, type Db } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { defaultWidgets } from "./widgetCatalog.js";
-import { defaultUiSpec } from "./uiSchema.js";
+import { defaultUiSpec, sanitizeUiSpec } from "./uiSchema.js";
 import type { AIRequestDocument, ConnectedWalletDocument, DashboardDocument, DashboardRevisionDocument, FeaturePermissionDocument, PortfolioSnapshotDocument, PublicAddressDocument, UIDocument, UIRevisionDocument, UserDocument } from "./models/index.js";
 
 let client: MongoClient | undefined;
@@ -74,9 +74,13 @@ export async function ensureUIDocument(userId: string, dashboardId: string) {
   const document: UIDocument = { _id: `${userId}:${dashboardId}`, userId, dashboardId, version: 1, source: "system", spec: defaultUiSpec(), createdAt: now, updatedAt: now };
   await (await collections.uiDocuments()).updateOne({ userId, dashboardId }, { $setOnInsert: document }, { upsert: true });
   const saved = (await findUIDocumentForUser(userId, dashboardId)) || document;
+  let normalizedSpec;
+  try { normalizedSpec = sanitizeUiSpec(saved.spec); } catch { normalizedSpec = defaultUiSpec(); }
+  if (JSON.stringify(saved.spec) !== JSON.stringify(normalizedSpec)) await (await collections.uiDocuments()).updateOne({ userId, dashboardId }, { $set: { spec: normalizedSpec } });
+  const normalizedDocument = { ...saved, spec: normalizedSpec };
   const hasRevision = await (await collections.uiRevisions()).findOne({ userId, dashboardId }, { projection: { _id: 1 } });
-  if (!hasRevision) await (await collections.uiRevisions()).insertOne({ _id: randomUUID(), userId, dashboardId, source: "system", summary: "Initial generated UI", spec: saved.spec, createdAt: saved.createdAt });
-  return saved;
+  if (!hasRevision) await (await collections.uiRevisions()).insertOne({ _id: randomUUID(), userId, dashboardId, source: "system", summary: "Initial generated UI", spec: normalizedSpec, createdAt: saved.createdAt });
+  return normalizedDocument;
 }
 
 export async function listUIRevisions(userId: string, dashboardId: string) {

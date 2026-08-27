@@ -5,6 +5,13 @@ const safeId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/);
 const safeText = z.string().trim().max(240);
 const widgetWidth = z.enum(["small", "medium", "large", "full"]);
 const cardTone = z.enum(["neutral", "accent", "success", "warning", "info", "danger"]);
+const themeSchema = z.object({
+  mode: z.enum(["light", "dark", "system"]).default("system"),
+  surface: z.enum(["flat", "soft", "glass"]).default("soft"),
+  radius: z.enum(["sharp", "rounded", "pill"]).default("rounded"),
+  typography: z.enum(["neutral", "technical", "editorial"]).default("neutral"),
+  density: z.enum(["comfortable", "compact"]).default("comfortable"),
+}).strict();
 
 export const uiComponentSchema = z.discriminatedUnion("type", [
   z.object({
@@ -64,6 +71,7 @@ export const uiSpecSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(300),
   accentPreset: z.enum(["cyan", "violet", "emerald", "amber", "rose", "slate"]),
+  theme: themeSchema.default({ mode: "system", surface: "soft", radius: "rounded", typography: "neutral", density: "comfortable" }),
   layout: z.enum(["stack", "grid"]),
   columns: z.number().int().min(1).max(4),
   components: z.array(uiComponentSchema).min(1).max(24),
@@ -103,6 +111,7 @@ export const uiResponseSchema = {
         title: { type: "string" },
         description: { type: "string" },
         accentPreset: { type: "string", enum: ["cyan", "violet", "emerald", "amber", "rose", "slate"] },
+        theme: { type: "object", additionalProperties: false, properties: { mode: { type: "string", enum: ["light", "dark", "system"] }, surface: { type: "string", enum: ["flat", "soft", "glass"] }, radius: { type: "string", enum: ["sharp", "rounded", "pill"] }, typography: { type: "string", enum: ["neutral", "technical", "editorial"] }, density: { type: "string", enum: ["comfortable", "compact"] } }, required: ["mode", "surface", "radius", "typography", "density"] },
         layout: { type: "string", enum: ["stack", "grid"] },
         columns: { type: "integer", minimum: 1, maximum: 4 },
         components: {
@@ -122,17 +131,18 @@ export const uiResponseSchema = {
               content: { anyOf: [{ type: "string" }, { type: "null" }] },
               description: { anyOf: [{ type: "string" }, { type: "null" }] },
               emphasis: { anyOf: [{ type: "string", enum: ["normal", "muted", "strong"] }, { type: "null" }] },
-              label: { anyOf: [{ type: "string" }, { type: "null" }] },
               source: { anyOf: [{ type: "string", enum: ["portfolio-value", "native-balances", "security-score", "wallet-count"] }, { type: "null" }] },
               format: { anyOf: [{ type: "string", enum: ["number", "currency", "percent"] }, { type: "null" }] },
               tone: { anyOf: [{ type: "string", enum: ["neutral", "accent", "success", "warning", "info", "danger"] }, { type: "null" }] },
               severity: { anyOf: [{ type: "string", enum: ["low", "medium", "high"] }, { type: "null" }] },
+              label: { anyOf: [{ type: "string" }, { type: "null" }] },
+              items: { anyOf: [{ type: "array", items: { type: "string" }, maxItems: 8 }, { type: "null" }] },
             },
             required: ["type", "id", "widgetType", "title", "width", "text", "body", "content", "description", "emphasis", "label", "source", "format", "tone", "severity"],
           },
         },
       },
-      required: ["version", "title", "description", "accentPreset", "layout", "columns", "components"],
+      required: ["version", "title", "description", "accentPreset", "theme", "layout", "columns", "components"],
     },
   },
   required: ["intent", "explanation", "warnings", "requiresApproval", "ui"],
@@ -153,7 +163,8 @@ export function emptyUiSpec(): UISpec {
     version: 1,
     title: "AvhiSafe workspace",
     description: "Your AI-generated personal wallet workspace.",
-    accentPreset: "cyan",
+        accentPreset: "cyan",
+    theme: { mode: "system", surface: "soft", radius: "rounded", typography: "neutral", density: "comfortable" },
     layout: "grid",
     columns: 2,
     components: [

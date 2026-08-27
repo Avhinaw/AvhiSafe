@@ -49,7 +49,14 @@ function normalizeUiComponent(raw: unknown): unknown {
   const component = { ...source, type: typeof source.type === "string" ? typeAliases[source.type] || source.type : source.type } as Record<string, unknown>;
   const variant = component.variant;
   delete component.variant;
-  if (component.type === "badge") {
+  if (component.type === "text") {
+    component.text ??= asSafeString(component.content) || asSafeString(component.body) || asSafeString(component.description);
+    const emphasisAlias = asSafeString(variant)?.toLowerCase();
+    if (component.emphasis === undefined && (emphasisAlias === "normal" || emphasisAlias === "muted" || emphasisAlias === "strong")) component.emphasis = emphasisAlias;
+    delete component.content;
+    delete component.body;
+    delete component.description;
+  } else if (component.type === "badge") {
     component.label ??= asSafeString(component.value) || asSafeString(component.title) || "Status";
     component.tone ??= toneAlias(variant) || "neutral";
   } else if (component.type === "card") {

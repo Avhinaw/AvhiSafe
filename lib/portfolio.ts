@@ -68,8 +68,7 @@ async function solanaRpc<T>(method: string, params: unknown[]): Promise<T> {
 
 async function fetchPrices(): Promise<Record<string, { usd?: number; usd_24h_change?: number }>> {
   const response = await fetch(
-    "https://api.coingecko.com/api/v3/simple/price?ids=solana,ethereum&vs_currencies=usd&include_24hr_change=true",
-    { headers: { Accept: "application/json" } }
+    "https://api.coingecko.com/api/v3/simple/price?ids=solana,ethereum&vs_currencies=usd&include_24hr_change=true", { headers: { Accept: "application/json" } }
   );
   if (!response.ok) return {};
   return response.json();

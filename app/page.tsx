@@ -4,7 +4,7 @@ import DynamicDashboard from "@/components/DynamicDashboard";
 
 export default function Home() {
   return (
-    <main className="mx-auto flex min-h-[92vh] max-w-7xl flex-col gap-4 p-4">
+    <main className="mx-auto flex min-h-[92vh] w-full max-w-7xl flex-col gap-4 overflow-x-hidden px-4 py-3 sm:px-6 sm:py-4 lg:px-8">
       <Navbar />
       <WalletGenerator />
       <DynamicDashboard />

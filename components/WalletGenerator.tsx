@@ -231,7 +231,7 @@ const WalletGenerator = () => {
                   duration: 0.3,
                   ease: "easeInOut",
                 }}
-                className="flex gap-4 flex-col my-12"
+                className="my-12 flex flex-col gap-3"
               >
                 <div className="flex flex-col gap-2">
                   <h1 className="tracking-tighter text-4xl md:text-5xl font-black">
@@ -285,8 +285,8 @@ const WalletGenerator = () => {
                     Save these words in a safe place.
                   </p>
                 </div>
-                <div className="flex flex-col md:flex-row gap-4">
-                  <Input
+                <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                  <Input className="w-full md:flex-1"
                     type="password"
                     placeholder="Enter your secret phrase (or leave blank to generate)"
                     onChange={(e) => setMnemonicInput(e.target.value)}
@@ -385,7 +385,7 @@ const WalletGenerator = () => {
             <h2 className="tracking-tighter text-3xl md:text-4xl font-extrabold">
               {pathTypeName} Wallet
             </h2>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 md:justify-end">
               {wallets.length > 1 && (
                 <Button
                   variant={"ghost"}
@@ -439,7 +439,7 @@ const WalletGenerator = () => {
                 }}
                 className="flex flex-col rounded-2xl border border-primary/10"
               >
-                <div className="flex justify-between px-8 py-6">
+                <div className="flex items-center justify-between gap-3 p-4 sm:px-8 sm:py-6">
                   <h3 className="font-bold text-2xl md:text-3xl tracking-tighter ">
                     Wallet {index + 1}
                   </h3>
@@ -474,7 +474,7 @@ const WalletGenerator = () => {
                     </AlertDialogContent>
                   </AlertDialog>
                 </div>
-                <div className="flex flex-col gap-8 px-8 py-4 rounded-2xl bg-secondary/50">
+                <div className="flex flex-col gap-6 rounded-2xl bg-secondary/50 p-4 sm:gap-8 sm:px-8 sm:py-4">
                   <div
                     className="flex flex-col w-full gap-2"
                     onClick={() => copyToClipboard(wallet.publicKey)}
@@ -497,7 +497,7 @@ const WalletGenerator = () => {
                       >
                         {visiblePrivateKeys[index]
                           ? wallet.privateKey
-                          : "•".repeat(wallet.mnemonic.length)}
+                          : "•".repeat(wallet.privateKey.length)}
                       </p>
                       <Button
                         variant="ghost"
@@ -522,7 +522,7 @@ const WalletGenerator = () => {
                       >
                         {visiblePhrases[index]
                           ? wallet.mnemonic
-                          : "•".repeat(wallet.mnemonic.length)}
+                          : "•".repeat(wallet.privateKey.length)}
                       </p>
 
                       <Button

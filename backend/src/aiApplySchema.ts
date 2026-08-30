@@ -11,5 +11,6 @@ export const aiApplyInput = z.object({
     ui: z.unknown(),
     source: z.literal("ai").optional(),
     model: z.string().max(100).optional(),
+    requestId: z.string().uuid().optional(),
   }).strict(),
 }).strict();

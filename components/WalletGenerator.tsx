@@ -231,7 +231,7 @@ const WalletGenerator = () => {
                   duration: 0.3,
                   ease: "easeInOut",
                 }}
-                className="my-12 flex flex-col gap-3"
+                className="my-6 flex flex-col gap-3"
               >
                 <div className="flex flex-col gap-2">
                   <h1 className="tracking-tighter text-4xl md:text-5xl font-black">
@@ -275,7 +275,7 @@ const WalletGenerator = () => {
                   duration: 0.3,
                   ease: "easeInOut",
                 }}
-                className="flex flex-col gap-4 my-12"
+                className="flex flex-col gap-4 my-6"
               >
                 <div className="flex flex-col gap-2">
                   <h1 className="tracking-tighter text-4xl md:text-5xl font-black">

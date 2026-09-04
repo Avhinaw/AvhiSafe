@@ -51,17 +51,29 @@ function SafeComponent({ children }: { children: React.ReactNode }) {
   }
 }
 
+// Shared layout guards applied to every generated component:
+// - min-w-0 + overflow-hidden: stop intrinsic-width children (charts, long strings)
+//   from bursting out of their CSS-column and visually overlapping the next item
+// - break-inside-avoid: stop a single card from being split top/bottom across columns
+// - block + w-full + mb-4: MUST be `block` not `inline-block` — inline-block margins
+//   don't reliably reserve vertical space in a multi-column layout, which is what
+//   was causing cards to render flush against each other with no gap
+const ITEM_WRAP_CLASS = "min-w-0 overflow-hidden break-inside-avoid block w-full mb-4";
+
 function GeneratedComponent({ component }: { component: UIComponent }) {
   if (component.type === "widget") {
+    // No border/bg on this wrapper — ConnectedWallets / PortfolioDashboard /
+    // SecurityCenter already render their own card chrome internally.
+    // Adding border+bg here nests a card inside a card (visible double-border bug).
     return (
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -12 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
-        className="rounded-2xl border border-primary/10 bg-background/60 p-3"
+        className={ITEM_WRAP_CLASS}
       >
-        <div className="mb-3 px-2 text-xs font-bold uppercase tracking-wider text-primary/45">
+        <div className="mb-2 px-1 text-xs font-bold uppercase tracking-wider text-primary/45">
           {component.title || component.widgetType.replaceAll("-", " ")}
         </div>
         <SafeComponent>
@@ -80,9 +92,9 @@ function GeneratedComponent({ component }: { component: UIComponent }) {
         exit={{ opacity: 0 }}
         transition={{ duration: 0.2 }}
         className={
-          emphasis === "strong" ? "text-lg font-bold"
+          (emphasis === "strong" ? "text-lg font-bold"
           : emphasis === "muted" ? "text-sm text-primary/60"
-          : "text-sm"
+          : "text-sm") + ` ${ITEM_WRAP_CLASS}`
         }
       >
         {component.text}
@@ -99,7 +111,7 @@ function GeneratedComponent({ component }: { component: UIComponent }) {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.25 }}
-        className="rounded-2xl border border-primary/10 bg-background/60 p-5"
+        className={`rounded-2xl border border-primary/10 bg-background/60 p-5 ${ITEM_WRAP_CLASS}`}
       >
         <p className="text-xs font-bold uppercase tracking-wider text-primary/50">{component.label}</p>
         <p className="mt-3 text-sm text-primary/65">Live {source.replaceAll("-", " ")} data</p>
@@ -108,7 +120,7 @@ function GeneratedComponent({ component }: { component: UIComponent }) {
     );
   }
 
-  // Card type — all fields are optional, so use safe defaults
+  // Card type — keeps its own border/bg since it has no inner widget chrome to clash with.
   const tone = component.tone || "neutral";
   const toneClass =
     tone === "success" ? "border-emerald-500/30 bg-emerald-500/10"
@@ -125,7 +137,7 @@ function GeneratedComponent({ component }: { component: UIComponent }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
       transition={{ duration: 0.25 }}
-      className={`rounded-2xl border p-5 ${toneClass}`}
+      className={`rounded-2xl border p-5 ${toneClass} ${ITEM_WRAP_CLASS}`}
     >
       <p className="font-semibold">{component.title || "AI-generated card"}</p>
       {cardText && <p className="mt-2 text-sm text-primary/65">{cardText}</p>}
@@ -137,7 +149,20 @@ function GeneratedUi({ document }: { document: UIDocument }) {
   const spec = document.spec;
   const components = useMemo(() => spec.components || [], [spec.components]);
   const accent = accentClasses[spec.accentPreset] || accentClasses.cyan;
-  const columns = Math.max(1, Math.min(4, spec.columns || 2));
+  const columns = Math.max(1, Math.min(4, Number(spec.columns) || 2));
+
+  // Masonry via CSS multi-column layout instead of CSS grid.
+  // Grid advances every column in lockstep row-by-row, so a tall widget in
+  // col 1 leaves a permanent dead zone next to a short widget in col 2.
+  // CSS columns flow each item into whichever column is currently shortest,
+  // closing that gap automatically without hardcoding row/col spans per widget.
+  const columnStyle =
+    spec.layout === "grid"
+      ? ({
+          columnCount: columns,
+          columnGap: "1rem",
+        } as React.CSSProperties)
+      : undefined;
 
   return (
     <motion.div
@@ -156,19 +181,24 @@ function GeneratedUi({ document }: { document: UIDocument }) {
         <h3 className="mt-2 text-xl font-black tracking-tight sm:text-3xl">{spec.title || "AvhiSafe workspace"}</h3>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-primary/60">{spec.description || "Your AI-generated personal wallet workspace."}</p>
       </div>
-      <div
-        className={
-          spec.layout === "grid"
-            ? `grid gap-4 grid-cols-1 ${columns >= 2 ? "sm:grid-cols-2" : ""} ${columns >= 3 ? "lg:grid-cols-3" : ""} ${columns >= 4 ? "xl:grid-cols-4" : ""}`
-            : "flex flex-col gap-4"
-        }
-      >
-        <AnimatePresence mode="popLayout">
-          {components.map((component) => (
-            <GeneratedComponent key={component.id} component={component} />
-          ))}
-        </AnimatePresence>
-      </div>
+
+      {spec.layout === "grid" ? (
+        <div style={columnStyle}>
+          <AnimatePresence mode="popLayout">
+            {components.map((component) => (
+              <GeneratedComponent key={component.id} component={component} />
+            ))}
+          </AnimatePresence>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <AnimatePresence mode="popLayout">
+            {components.map((component) => (
+              <GeneratedComponent key={component.id} component={component} />
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
     </motion.div>
   );
 }

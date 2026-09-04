@@ -33,7 +33,15 @@ function inferChain(path: string | undefined): Chain {
   return path?.includes("501") ? "solana" : "ethereum";
 }
 
-export default function PortfolioDashboard() {
+interface PortfolioDashboardProps {
+  // When true, this renders as a nested widget inside another layout (e.g. the
+  // AI-generated dashboard grid) instead of as a standalone top-level page
+  // section — drops the section-divider spacing and shrinks the hero heading
+  // so it doesn't dominate a small card slot.
+  embedded?: boolean;
+}
+
+export default function PortfolioDashboard({ embedded = false }: PortfolioDashboardProps) {
   const [addresses, setAddresses] = useState<PortfolioAddress[]>([]);
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [loading, setLoading] = useState(false);
@@ -125,28 +133,65 @@ export default function PortfolioDashboard() {
   };
 
   return (
-    <section className="mt-16 min-w-0 overflow-hidden border-t border-primary/10 pt-12">
+    <section
+      className={
+        embedded
+          ? "min-w-0 overflow-hidden"
+          : "mt-16 min-w-0 overflow-hidden border-t border-primary/10 pt-12"
+      }
+    >
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-sm font-bold uppercase tracking-[0.2em] text-primary/50">Read-only portfolio</p>
-          <h2 className="text-2xl font-black tracking-tighter sm:text-4xl md:text-5xl">Your on-chain view</h2>
-          <p className="mt-2 max-w-2xl text-primary/70">Balances and activity are fetched from public blockchain data sources. AvhiSafe never signs transactions or sends private keys to these services.</p>
+          <h2
+            className={
+              embedded
+                ? "text-xl font-black tracking-tight sm:text-2xl"
+                : "text-2xl font-black tracking-tighter sm:text-4xl md:text-5xl"
+            }
+          >
+            Your on-chain view
+          </h2>
+          <p className={embedded ? "mt-2 max-w-2xl text-sm text-primary/70" : "mt-2 max-w-2xl text-primary/70"}>
+            Balances and activity are fetched from public blockchain data sources. AvhiSafe never signs transactions or sends private keys to these services.
+          </p>
         </div>
         <Button onClick={refresh} disabled={loading || !addresses.length} variant="outline" className="w-full gap-2 md:w-auto">
           <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} /> Refresh data
         </Button>
       </div>
 
-      <div className="mb-2 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><h3 className="text-lg font-bold">Portfolio history</h3><p className="text-sm text-primary/50">Last 14 refresh snapshots, stored only in this browser.</p></div><div className="flex items-end gap-1">{history.slice(-14).map((point) => <div key={point.timestamp} title={`${new Date(point.timestamp).toLocaleString()}: ${formatUsd(point.value)}`} className="w-3 rounded-t bg-primary/50" style={{ height: `${Math.max(8, Math.min(48, point.value / Math.max(totalUsd, 1) * 48))}px` }} />)}</div></div>      <div className="mb-2 flex items-center gap-3"><Input value={tokenQuery} onChange={(event) => setTokenQuery(event.target.value)} placeholder="Search token holdings across wallets" /></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mb-2 mt-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="text-lg font-bold">Portfolio history</h3>
+          <p className="text-sm text-primary/50">Last 14 refresh snapshots, stored only in this browser.</p>
+        </div>
+        <div className="flex items-end gap-1">
+          {history.slice(-14).map((point) => (
+            <div
+              key={point.timestamp}
+              title={`${new Date(point.timestamp).toLocaleString()}: ${formatUsd(point.value)}`}
+              className="w-3 rounded-t bg-primary/50"
+              style={{ height: `${Math.max(8, Math.min(48, point.value / Math.max(totalUsd, 1) * 48))}px` }}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-2 flex items-center gap-3">
+        <Input value={tokenQuery} onChange={(event) => setTokenQuery(event.target.value)} placeholder="Search token holdings across wallets" />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded-2xl border border-primary/10 bg-primary/[0.04] p-6"><p className="text-sm text-primary/60">Tracked addresses</p><p className="mt-2 text-3xl font-black">{addresses.length}</p></div>
         <div className="rounded-2xl border border-primary/10 bg-primary/[0.04] p-6"><p className="text-sm text-primary/60">Estimated portfolio value</p><p className="mt-2 text-3xl font-black">{formatUsd(totalUsd)}</p></div>
         <div className="rounded-2xl border border-primary/10 bg-primary/[0.04] p-6"><p className="text-sm text-primary/60">Data mode</p><p className="mt-2 text-3xl font-black">Read-only</p></div>
       </div>
 
       {addresses.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-primary/20 p-10 text-center"><WalletCards className="mx-auto mb-4 size-10 text-primary/40" /><h3 className="text-2xl font-bold">Generate a wallet to see your portfolio</h3><p className="mt-2 text-primary/60">You can also add a public address below as a watch-only portfolio.</p></div>
+        <div className="mt-4 rounded-2xl border border-dashed border-primary/20 p-10 text-center"><WalletCards className="mx-auto mb-4 size-10 text-primary/40" /><h3 className="text-2xl font-bold">Generate a wallet to see your portfolio</h3><p className="mt-2 text-primary/60">You can also add a public address below as a watch-only portfolio.</p></div>
       ) : (
-        <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+        <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-2">
           {snapshots.map((snapshot) => (
             <article key={snapshot.address.id} className="min-w-0 overflow-hidden rounded-2xl border border-primary/10 bg-secondary/30 p-4 sm:p-6">
               {/* Card header */}
@@ -240,9 +285,39 @@ export default function PortfolioDashboard() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-primary/10 p-4 sm:p-6"><div className="flex items-start gap-3"><Plus className="size-5" /><div><h3 className="text-xl font-bold">Add a watch-only address</h3><p className="text-sm text-primary/60">Track a public address without importing its recovery phrase or private key.</p></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto]"><Input value={watchLabel} onChange={(event) => setWatchLabel(event.target.value)} placeholder="Label (optional)" /><Input value={watchAddress} onChange={(event) => setWatchAddress(event.target.value)} placeholder="Public address" /><select value={watchChain} onChange={(event) => setWatchChain(event.target.value as Chain)} className="h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="ethereum">Ethereum</option><option value="solana">Solana</option></select><Button onClick={addWatchAddress}>Add address</Button></div></div>
+      <div className="mt-4 rounded-2xl border border-primary/10 p-4 sm:p-6">
+        <div className="flex items-start gap-3">
+          <Plus className="size-5" />
+          <div>
+            <h3 className="text-xl font-bold">Add a watch-only address</h3>
+            <p className="text-sm text-primary/60">Track a public address without importing its recovery phrase or private key.</p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto]">
+          <Input value={watchLabel} onChange={(event) => setWatchLabel(event.target.value)} placeholder="Label (optional)" />
+          <Input value={watchAddress} onChange={(event) => setWatchAddress(event.target.value)} placeholder="Public address" />
+          <select value={watchChain} onChange={(event) => setWatchChain(event.target.value as Chain)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <option value="ethereum">Ethereum</option>
+            <option value="solana">Solana</option>
+          </select>
+          <Button onClick={addWatchAddress}>Add address</Button>
+        </div>
+      </div>
 
-      {selectedQr && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setSelectedQr(null)}><div className="w-full max-w-sm rounded-2xl bg-background p-8 text-center shadow-2xl" onClick={(event) => event.stopPropagation()}><h3 className="text-2xl font-bold">Receive on {chainNames[selectedQr.chain]}</h3><p className="mt-2 text-sm text-primary/60">Share this public address only. Never share a private key or recovery phrase.</p><div className="mx-auto my-6 flex w-fit rounded-xl bg-white p-4"><QRCodeSVG value={selectedQr.address} size={220} includeMargin /></div><p className="break-all font-mono text-xs text-primary/70">{selectedQr.address}</p><div className="mt-6 flex flex-col gap-3 sm:flex-row"><Button className="flex-1" onClick={() => copyAddress(selectedQr.address)}>Copy address</Button><Button variant="outline" onClick={() => setSelectedQr(null)}>Close</Button></div></div></div>}
+      {selectedQr && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setSelectedQr(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-background p-8 text-center shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <h3 className="text-2xl font-bold">Receive on {chainNames[selectedQr.chain]}</h3>
+            <p className="mt-2 text-sm text-primary/60">Share this public address only. Never share a private key or recovery phrase.</p>
+            <div className="mx-auto my-6 flex w-fit rounded-xl bg-white p-4"><QRCodeSVG value={selectedQr.address} size={220} includeMargin /></div>
+            <p className="break-all font-mono text-xs text-primary/70">{selectedQr.address}</p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <Button className="flex-1" onClick={() => copyAddress(selectedQr.address)}>Copy address</Button>
+              <Button variant="outline" onClick={() => setSelectedQr(null)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

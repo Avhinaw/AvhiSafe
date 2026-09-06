@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LayoutDashboard, RotateCcw, Sparkles, Wand2, Check, AlertTriangle, Loader2 } from "lucide-react";
+import { LayoutDashboard, RotateCcw, Wand2, Check, AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import ConnectedWallets from "./ConnectedWallets";
 import PortfolioDashboard from "./PortfolioDashboard";
@@ -38,7 +38,7 @@ function RegisteredWidget({ widgetType }: { widgetType: string }) {
   return (
     <div className="rounded-xl bg-primary/[0.03] p-8 text-center">
       <p className="font-semibold capitalize">{widgetType.replaceAll("-", " ")}</p>
-      <p className="mt-2 text-sm text-primary/55">This widget is enabled for your AI-generated workspace.</p>
+      <p className="mt-2 text-sm text-primary/55">No renderer registered for this widget type yet.</p>
     </div>
   );
 }
@@ -114,7 +114,7 @@ function GeneratedComponent({ component }: { component: UIComponent }) {
         className={`rounded-2xl border border-primary/10 bg-background/60 p-5 ${ITEM_WRAP_CLASS}`}
       >
         <p className="text-xs font-bold uppercase tracking-wider text-primary/50">{component.label}</p>
-        <p className="mt-3 text-sm text-primary/65">Live {source.replaceAll("-", " ")} data</p>
+        <p className="mt-3 text-sm text-primary/65">{source.replaceAll("-", " ")}</p>
         <p className="mt-1 text-xs text-primary/45">Format: {format}</p>
       </motion.div>
     );
@@ -139,7 +139,7 @@ function GeneratedComponent({ component }: { component: UIComponent }) {
       transition={{ duration: 0.25 }}
       className={`rounded-2xl border p-5 ${toneClass} ${ITEM_WRAP_CLASS}`}
     >
-      <p className="font-semibold">{component.title || "AI-generated card"}</p>
+      {component.title && <p className="font-semibold">{component.title}</p>}
       {cardText && <p className="mt-2 text-sm text-primary/65">{cardText}</p>}
     </motion.div>
   );
@@ -170,16 +170,13 @@ function GeneratedUi({ document }: { document: UIDocument }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className={`rounded-3xl border p-4 sm:p-6 ${accent}`}
+      className={`rounded-3xl p-4 sm:p-6 ${accent}`}
       data-ui-version={document.version}
       data-ui-source={document.source}
     >
       <div className="mb-6">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary/50">
-          AI-generated personal interface · v{document.version}
-        </p>
-        <h3 className="mt-2 text-xl font-black tracking-tight sm:text-3xl">{spec.title || "AvhiSafe workspace"}</h3>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-primary/60">{spec.description || "Your AI-generated personal wallet workspace."}</p>
+        <h3 className="text-xl font-black tracking-tight sm:text-3xl">{spec.title || "Workspace"}</h3>
+        {spec.description && <p className="mt-2 max-w-2xl text-sm leading-6 text-primary/60">{spec.description}</p>}
       </div>
 
       {spec.layout === "grid" ? (
@@ -221,7 +218,7 @@ export default function DynamicDashboard() {
       setDashboard(data.dashboard);
       setUiDocument(data.uiDocument);
     } catch (error) {
-      setBackendError(error instanceof Error ? error.message : "The AI workspace backend is unavailable.");
+      setBackendError(error instanceof Error ? error.message : "Couldn't reach the workspace backend.");
     } finally {
       setLoading(false);
     }
@@ -232,7 +229,7 @@ export default function DynamicDashboard() {
   const runPlan = async () => {
     if (!dashboard || !uiDocument) return;
     const requestedPrompt = prompt.trim();
-    if (!requestedPrompt) { toast.error("Describe the UI you want the AI to create."); return; }
+    if (!requestedPrompt) { toast.error("Describe the layout you want first."); return; }
     setPlanning(true);
     setPlan(null);
     try {
@@ -242,7 +239,7 @@ export default function DynamicDashboard() {
         toast.info(result.plan.explanation);
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "AI is temporarily unavailable. Please try again.");
+      toast.error(error instanceof Error ? error.message : "Generation failed. Try again.");
     } finally {
       setPlanning(false);
     }
@@ -257,9 +254,9 @@ export default function DynamicDashboard() {
       setUiDocument(result.uiDocument);
       setPlan(null);
       setPrompt("");
-      toast.success("Your AI-generated dashboard is live!");
+      toast.success("Dashboard updated.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to save the AI UI. Please try again.");
+      toast.error(error instanceof Error ? error.message : "Couldn't save the layout.");
     } finally {
       setApplying(false);
     }
@@ -272,21 +269,21 @@ export default function DynamicDashboard() {
       setDashboard(result.dashboard);
       setUiDocument(result.uiDocument);
       setPlan(null);
-      toast.success("Previous AI-generated UI restored.");
+      toast.success("Previous layout restored.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to restore the previous AI UI.");
+      toast.error(error instanceof Error ? error.message : "Couldn't restore the previous layout.");
     }
   };
 
   const newDashboard = async () => {
     if (!dashboard) return;
     try {
-      const result = await createDashboard({ name: "New personal dashboard", slug: `dashboard-${Date.now()}`, theme: dashboard.theme, currency: dashboard.currency, density: dashboard.density, isDefault: false, widgets: [], filters: {} });
+      const result = await createDashboard({ name: "New dashboard", slug: `dashboard-${Date.now()}`, theme: dashboard.theme, currency: dashboard.currency, density: dashboard.density, isDefault: false, widgets: [], filters: {} });
       setDashboard(result.dashboard);
       setUiDocument(result.uiDocument);
       setPlan(null);
-      toast.success("New personal AI dashboard created.");
-    } catch { toast.error("Unable to create a synced dashboard."); }
+      toast.success("New dashboard created.");
+    } catch { toast.error("Couldn't create a new dashboard."); }
   };
 
   if (loading) return (
@@ -295,9 +292,9 @@ export default function DynamicDashboard() {
 
   if (!dashboard || !uiDocument) return (
     <section className="mt-12 bg-amber-200/[0.05] px-4">
-      <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="size-5 text-amber-600" />AI workspace unavailable</div>
-      <p className="mt-2 text-sm text-primary/65">{backendError || "Connect the backend and configure an AI provider."}</p>
-      <Button className="mt-4" variant="outline" onClick={() => void load()}>Retry connection</Button>
+      <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="size-5 text-amber-600" />Workspace unavailable</div>
+      <p className="mt-2 text-sm text-primary/65">{backendError || "Connect the backend to load your workspace."}</p>
+      <Button className="mt-4" variant="outline" onClick={() => void load()}>Retry</Button>
     </section>
   );
 
@@ -305,18 +302,17 @@ export default function DynamicDashboard() {
     <section className="flex flex-col gap-6 rounded-3xl bg-background text-foreground transition-colors duration-200">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary/50">Universal AI workspace</p>
           <h2 className="mt-2 flex items-center gap-3 text-2xl font-black tracking-tight sm:text-4xl"><LayoutDashboard className="size-6 sm:size-8" />{dashboard.name}</h2>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="gap-2" onClick={newDashboard}><LayoutDashboard className="size-4" />New dashboard</Button>
-          <Button variant="ghost" className="gap-2" onClick={undo}><RotateCcw className="size-4" />Undo AI UI</Button>
+          <Button variant="ghost" className="gap-2" onClick={undo}><RotateCcw className="size-4" />Undo</Button>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-primary/10 bg-primary/[0.03] p-5">
-        <div className="flex items-center gap-2 text-sm font-bold"><Sparkles className="size-4 text-primary/60" />Describe the interface you want</div>
-        <p className="mt-2 text-xs text-primary/55">Type any request — change themes, reorder widgets, add cards, adjust columns, or describe your ideal dashboard.</p>
+      <div className="rounded-2xl bg-primary/[0.03] p-5">
+        <div className="text-sm font-bold">Describe the layout you want</div>
+        <p className="mt-2 text-xs text-primary/55">Change the theme, reorder widgets, or adjust columns.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {PROMPT_SUGGESTIONS.map((suggestion) => (
             <button key={suggestion} onClick={() => setPrompt(suggestion)} className="rounded-full border border-primary/10 px-3 py-1.5 text-xs text-primary/60 transition-colors hover:bg-primary/5 hover:text-primary/80">
@@ -325,21 +321,20 @@ export default function DynamicDashboard() {
           ))}
         </div>
         <div className="mt-3 flex flex-col gap-3 md:flex-row">
-          <Input value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void runPlan(); }} placeholder="Build a dark risk-focused dashboard with security first, portfolio history, and a compact two-column layout" />
+          <Input value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void runPlan(); }} placeholder="e.g. dark risk-focused layout, security first, two columns" />
           <Button className="gap-2 md:min-w-32" disabled={planning} onClick={runPlan}>
-            {planning ? <><Loader2 className="size-4 animate-spin" />Asking AI…</> : <><Wand2 className="size-4" />Generate UI</>}
+            {planning ? <><Loader2 className="size-4 animate-spin" />Generating…</> : <><Wand2 className="size-4" />Generate</>}
           </Button>
         </div>
 
         {plan && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 rounded-xl bg-background p-4">
             <p className="font-semibold">{plan.explanation}</p>
-            <p className="mt-1 text-xs text-primary/50">Source: {plan.source}{plan.model ? ` · ${plan.model}` : ""} · {plan.ui?.components.length || 0} generated components</p>
             {plan.warnings.map((warning) => <p key={warning} className="mt-2 text-sm text-amber-700">{warning}</p>)}
-            {plan.ui && <p className="mt-3 text-sm text-primary/65">Preview: &ldquo;{plan.ui.title}&rdquo; with {plan.ui.layout} layout, {plan.ui.columns} column{plan.ui.columns === 1 ? "" : "s"}, and {plan.ui.accentPreset} accent.</p>}
+            {plan.ui && <p className="mt-3 text-sm text-primary/65">"{plan.ui.title}" — {plan.ui.layout}, {plan.ui.columns} column{plan.ui.columns === 1 ? "" : "s"}, {plan.ui.accentPreset} accent.</p>}
             <div className="mt-4 flex gap-2">
               <Button disabled={applying || !plan.ui || plan.intent !== "customize_ui"} onClick={applyPlan} className="gap-2">
-                {applying ? <><Loader2 className="size-4 animate-spin" />Saving AI UI…</> : <><Check className="size-4" />Apply AI UI to my dashboard</>}
+                {applying ? <><Loader2 className="size-4 animate-spin" />Saving…</> : <><Check className="size-4" />Apply</>}
               </Button>
               <Button variant="ghost" onClick={() => setPlan(null)}>Cancel</Button>
             </div>

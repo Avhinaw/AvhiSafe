@@ -19,6 +19,10 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
 const chainNames: Record<Chain, string> = { ethereum: "Ethereum", solana: "Solana" };
+const chainBadgeClasses: Record<Chain, string> = {
+  ethereum: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+  solana: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
+};
 
 function formatAmount(value: number, maximumFractionDigits = 6) {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits }).format(value);
@@ -33,11 +37,41 @@ function inferChain(path: string | undefined): Chain {
   return path?.includes("501") ? "solana" : "ethereum";
 }
 
+// Renders points as a smooth sparkline instead of independent bars, so a viewer
+// reads it as one trend rather than N separate measurements.
+function Sparkline({ points }: { points: Array<{ timestamp: number; value: number }> }) {
+  if (points.length < 2) return null;
+  const width = 200;
+  const height = 48;
+  const values = points.map((point) => point.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const coords = points.map((point, index) => {
+    const x = (index / (points.length - 1)) * width;
+    const y = height - ((point.value - min) / range) * height;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const trendUp = values[values.length - 1] >= values[0];
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-12 w-full" preserveAspectRatio="none">
+      <polyline
+        points={coords.join(" ")}
+        fill="none"
+        stroke={trendUp ? "rgb(16 185 129)" : "rgb(244 63 94)"}
+        strokeWidth={2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 interface PortfolioDashboardProps {
-  // When true, this renders as a nested widget inside another layout (e.g. the
-  // AI-generated dashboard grid) instead of as a standalone top-level page
-  // section — drops the section-divider spacing and shrinks the hero heading
-  // so it doesn't dominate a small card slot.
+  // When true, this renders as a nested widget inside a larger grid layout
+  // instead of as a standalone top-level page section — drops the
+  // section-divider spacing and shrinks the hero heading so it doesn't
+  // dominate a small card slot.
   embedded?: boolean;
 }
 
@@ -100,6 +134,13 @@ export default function PortfolioDashboard({ embedded = false }: PortfolioDashbo
 
   const totalUsd = useMemo(() => snapshots.reduce((sum, snapshot) => sum + (snapshot.nativeValueUsd || 0) + snapshot.tokens.reduce((tokenSum, token) => tokenSum + (token.valueUsd || 0), 0), 0), [snapshots]);
 
+  const changeVsFirst = useMemo(() => {
+    if (history.length < 2) return null;
+    const first = history[0].value;
+    if (!first) return null;
+    return ((totalUsd - first) / first) * 100;
+  }, [history, totalUsd]);
+
   const addWatchAddress = () => {
     const address = watchAddress.trim();
     if (!validateAddress(address, watchChain)) {
@@ -133,163 +174,152 @@ export default function PortfolioDashboard({ embedded = false }: PortfolioDashbo
   };
 
   return (
-    <section
-      className={
-        embedded
-          ? "min-w-0 overflow-hidden"
-          : "mt-16 min-w-0 overflow-hidden border-t border-primary/10 pt-12"
-      }
-    >
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <section className={embedded ? "min-w-0 overflow-hidden" : "mt-16 min-w-0 overflow-hidden border-t border-primary/10 pt-12"}>
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-primary/50">Read-only portfolio</p>
-          <h2
-            className={
-              embedded
-                ? "text-xl font-black tracking-tight sm:text-2xl"
-                : "text-2xl font-black tracking-tighter sm:text-4xl md:text-5xl"
-            }
-          >
+          <h2 className={embedded ? "text-xl font-black tracking-tight sm:text-2xl" : "text-2xl font-black tracking-tighter sm:text-4xl"}>
             Your on-chain view
           </h2>
-          <p className={embedded ? "mt-2 max-w-2xl text-sm text-primary/70" : "mt-2 max-w-2xl text-primary/70"}>
-            Balances and activity are fetched from public blockchain data sources. AvhiSafe never signs transactions or sends private keys to these services.
+          <p className="mt-2 max-w-md text-sm text-primary/70">
+            Balances come from public blockchain data. AvhiSafe never signs transactions or handles private keys here.
           </p>
         </div>
-        <Button onClick={refresh} disabled={loading || !addresses.length} variant="outline" className="w-full gap-2 md:w-auto">
-          <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} /> Refresh data
+        <Button onClick={refresh} disabled={loading || !addresses.length} variant="outline" className="gap-2">
+          <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} /> Refresh
         </Button>
       </div>
 
-      <div className="mb-2 mt-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      {/* Hero stat: one number carries the section, the sparkline shows momentum
+          instead of splitting attention across three identical cards. */}
+      <div className="mt-8 flex flex-col gap-6 rounded-2xl border border-primary/10 bg-primary/[0.03] p-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-lg font-bold">Portfolio history</h3>
-          <p className="text-sm text-primary/50">Last 14 refresh snapshots, stored only in this browser.</p>
+          <p className="text-sm text-primary/60">Estimated portfolio value</p>
+          <p className="mt-1 text-4xl font-black tracking-tight sm:text-5xl">{formatUsd(totalUsd)}</p>
+          <p className="mt-2 text-sm text-primary/60">
+            {addresses.length} tracked {addresses.length === 1 ? "address" : "addresses"}
+            {changeVsFirst !== null && (
+              <span className={changeVsFirst >= 0 ? "ml-2 text-emerald-600" : "ml-2 text-rose-600"}>
+                {changeVsFirst >= 0 ? "+" : ""}{changeVsFirst.toFixed(1)}% over last {history.length} refreshes
+              </span>
+            )}
+          </p>
         </div>
-        <div className="flex items-end gap-1">
-          {history.slice(-14).map((point) => (
-            <div
-              key={point.timestamp}
-              title={`${new Date(point.timestamp).toLocaleString()}: ${formatUsd(point.value)}`}
-              className="w-3 rounded-t bg-primary/50"
-              style={{ height: `${Math.max(8, Math.min(48, point.value / Math.max(totalUsd, 1) * 48))}px` }}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="mb-2 flex items-center gap-3">
-        <Input value={tokenQuery} onChange={(event) => setTokenQuery(event.target.value)} placeholder="Search token holdings across wallets" />
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="rounded-2xl border border-primary/10 bg-primary/[0.04] p-6"><p className="text-sm text-primary/60">Tracked addresses</p><p className="mt-2 text-3xl font-black">{addresses.length}</p></div>
-        <div className="rounded-2xl border border-primary/10 bg-primary/[0.04] p-6"><p className="text-sm text-primary/60">Estimated portfolio value</p><p className="mt-2 text-3xl font-black">{formatUsd(totalUsd)}</p></div>
-        <div className="rounded-2xl border border-primary/10 bg-primary/[0.04] p-6"><p className="text-sm text-primary/60">Data mode</p><p className="mt-2 text-3xl font-black">Read-only</p></div>
+        {history.length >= 2 && (
+          <div className="w-full sm:w-48">
+            <Sparkline points={history} />
+          </div>
+        )}
       </div>
 
       {addresses.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-primary/20 p-10 text-center"><WalletCards className="mx-auto mb-4 size-10 text-primary/40" /><h3 className="text-2xl font-bold">Generate a wallet to see your portfolio</h3><p className="mt-2 text-primary/60">You can also add a public address below as a watch-only portfolio.</p></div>
-      ) : (
-        <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-2">
-          {snapshots.map((snapshot) => (
-            <article key={snapshot.address.id} className="min-w-0 overflow-hidden rounded-2xl border border-primary/10 bg-secondary/30 p-4 sm:p-6">
-              {/* Card header */}
-              <div className="flex min-w-0 items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-bold">{chainNames[snapshot.address.chain]}</span>
-                    <span className="text-xs text-primary/50">
-                      {snapshot.address.source === "watch" ? "Watch-only" : snapshot.address.source === "connected" ? "Connected wallet" : "Generated wallet"}
-                    </span>
-                  </div>
-                  <h3 className="mt-3 truncate text-lg font-bold tracking-tight sm:text-2xl">{snapshot.address.label}</h3>
-                  <p className="mt-1 truncate font-mono text-xs text-primary/60">{snapshot.address.address}</p>
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => copyAddress(snapshot.address.address)} aria-label="Copy address"><Copy className="size-4" /></Button>
-                  <Button variant="ghost" size="icon" onClick={() => setSelectedQr(snapshot.address)} aria-label="Show QR code"><QrCode className="size-4" /></Button>
-                  {snapshot.address.source === "watch" && (
-                    <Button variant="ghost" size="icon" onClick={() => removeWatchAddress(snapshot.address)} aria-label="Remove address"><Trash2 className="size-4 text-destructive" /></Button>
-                  )}
-                </div>
-              </div>
-
-              {snapshot.error ? (
-                <p className="mt-5 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{snapshot.error}</p>
-              ) : (
-                <>
-                  {/* Native balance */}
-                  <div className="mt-6 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                    <div className="min-w-0">
-                      <p className="text-sm text-primary/60">Native balance</p>
-                      <p className="text-xl font-black sm:text-3xl">
-                        {formatAmount(snapshot.nativeBalance)} <span className="text-sm sm:text-base">{snapshot.nativeSymbol}</span>
-                      </p>
-                    </div>
-                    <p className="text-base font-bold sm:text-right sm:text-lg">{formatUsd(snapshot.nativeValueUsd)}</p>
-                  </div>
-
-                  {/* Token holdings */}
-                  <div className="mt-6">
-                    <h4 className="font-bold">Token holdings <span className="text-primary/50">({snapshot.tokens.length})</span></h4>
-                    {snapshot.tokens.length ? (
-                      <div className="mt-3 flex flex-col gap-2">
-                        {snapshot.tokens
-                          .filter((token) => token.symbol.toLowerCase().includes(tokenQuery.toLowerCase()) || token.name.toLowerCase().includes(tokenQuery.toLowerCase()))
-                          .slice(0, 6)
-                          .map((token) => (
-                            <div key={token.id} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-background/60 p-3 text-sm">
-                              <span className="min-w-0 truncate">
-                                <strong>{token.symbol}</strong>
-                                <span className="ml-2 text-primary/50">{token.name}</span>
-                              </span>
-                              <span className="shrink-0 text-right">
-                                {formatAmount(token.amount)}
-                                <br />
-                                <span className="text-xs text-primary/50">{formatUsd(token.valueUsd)}</span>
-                              </span>
-                            </div>
-                          ))}
-                      </div>
-                    ) : (
-                      <p className="mt-3 text-sm text-primary/50">No non-zero token holdings were returned.</p>
-                    )}
-                  </div>
-
-                  {/* Recent activity */}
-                  <div className="mt-6">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-bold">Recent activity</h4>
-                      <a href={snapshot.explorerUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-bold text-primary/70 hover:text-primary">
-                        Explorer <ExternalLink className="size-3" />
-                      </a>
-                    </div>
-                    {snapshot.transactions.length ? (
-                      <div className="mt-3 flex flex-col gap-2">
-                        {snapshot.transactions.slice(0, 5).map((tx) => (
-                          <a key={tx.hash} href={tx.explorerUrl} target="_blank" rel="noreferrer" className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-background/60 p-3 text-sm hover:bg-background">
-                            <span className="min-w-0 truncate font-mono">{tx.hash.slice(0, 10)}…{tx.hash.slice(-6)}</span>
-                            <span className="shrink-0 text-primary/50">{tx.status || "View"} <ExternalLink className="ml-1 inline size-3" /></span>
-                          </a>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="mt-3 text-sm text-primary/50">No recent transactions returned.</p>
-                    )}
-                  </div>
-                </>
-              )}
-            </article>
-          ))}
+        <div className="mt-6 rounded-2xl border border-dashed border-primary/20 p-10 text-center">
+          <WalletCards className="mx-auto mb-4 size-10 text-primary/40" />
+          <h3 className="text-xl font-bold">No wallets to track yet</h3>
+          <p className="mt-2 text-primary/60">Generate a wallet, or add a public address below to watch its balance.</p>
         </div>
+      ) : (
+        <>
+          <div className="mt-8">
+            <Input value={tokenQuery} onChange={(event) => setTokenQuery(event.target.value)} placeholder="Search token holdings across wallets" />
+          </div>
+
+          <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-2">
+            {snapshots.map((snapshot) => (
+              <article key={snapshot.address.id} className="min-w-0 overflow-hidden rounded-2xl border border-primary/10 bg-secondary/30 p-4 sm:p-6">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2 py-1 text-xs font-bold ${chainBadgeClasses[snapshot.address.chain]}`}>
+                        {chainNames[snapshot.address.chain]}
+                      </span>
+                      <span className="text-xs text-primary/50">
+                        {snapshot.address.source === "watch" ? "Watch-only" : snapshot.address.source === "connected" ? "Connected wallet" : "Generated wallet"}
+                      </span>
+                    </div>
+                    <h3 className="mt-3 truncate text-lg font-bold tracking-tight sm:text-2xl">{snapshot.address.label}</h3>
+                    <p className="mt-1 truncate font-mono text-xs text-primary/60">{snapshot.address.address}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => copyAddress(snapshot.address.address)} aria-label="Copy address"><Copy className="size-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setSelectedQr(snapshot.address)} aria-label="Show QR code"><QrCode className="size-4" /></Button>
+                    {snapshot.address.source === "watch" && (
+                      <Button variant="ghost" size="icon" onClick={() => removeWatchAddress(snapshot.address)} aria-label="Remove address"><Trash2 className="size-4 text-destructive" /></Button>
+                    )}
+                  </div>
+                </div>
+
+                {snapshot.error ? (
+                  <p className="mt-5 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{snapshot.error}</p>
+                ) : (
+                  <>
+                    <div className="mt-6 flex items-end justify-between border-t border-primary/10 pt-4">
+                      <div className="min-w-0">
+                        <p className="text-sm text-primary/60">Native balance</p>
+                        <p className="text-xl font-black sm:text-2xl">
+                          {formatAmount(snapshot.nativeBalance)} <span className="text-sm font-bold text-primary/50">{snapshot.nativeSymbol}</span>
+                        </p>
+                      </div>
+                      <p className="text-lg font-bold">{formatUsd(snapshot.nativeValueUsd)}</p>
+                    </div>
+
+                    <div className="mt-6">
+                      <h4 className="text-sm font-bold text-primary/70">Token holdings ({snapshot.tokens.length})</h4>
+                      {snapshot.tokens.length ? (
+                        <div className="mt-2 divide-y divide-primary/10">
+                          {snapshot.tokens
+                            .filter((token) => token.symbol.toLowerCase().includes(tokenQuery.toLowerCase()) || token.name.toLowerCase().includes(tokenQuery.toLowerCase()))
+                            .slice(0, 6)
+                            .map((token) => (
+                              <div key={token.id} className="flex min-w-0 items-center justify-between gap-3 py-2.5 text-sm">
+                                <span className="min-w-0 truncate">
+                                  <strong>{token.symbol}</strong>
+                                  <span className="ml-2 text-primary/50">{token.name}</span>
+                                </span>
+                                <span className="shrink-0 text-right">
+                                  {formatAmount(token.amount)}
+                                  <span className="ml-2 text-xs text-primary/50">{formatUsd(token.valueUsd)}</span>
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-sm text-primary/50">No token balances found.</p>
+                      )}
+                    </div>
+
+                    <div className="mt-6">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-bold text-primary/70">Recent activity</h4>
+                        <a href={snapshot.explorerUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-bold text-primary/70 hover:text-primary">
+                          Explorer <ExternalLink className="size-3" />
+                        </a>
+                      </div>
+                      {snapshot.transactions.length ? (
+                        <div className="mt-2 divide-y divide-primary/10">
+                          {snapshot.transactions.slice(0, 5).map((tx) => (
+                            <a key={tx.hash} href={tx.explorerUrl} target="_blank" rel="noreferrer" className="flex min-w-0 items-center justify-between gap-3 py-2.5 text-sm hover:text-primary">
+                              <span className="min-w-0 truncate font-mono">{tx.hash.slice(0, 10)}…{tx.hash.slice(-6)}</span>
+                              <span className="shrink-0 text-primary/50">{tx.status || "View"}</span>
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-sm text-primary/50">No recent transactions.</p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </article>
+            ))}
+          </div>
+        </>
       )}
 
-      <div className="mt-4 rounded-2xl border border-primary/10 p-4 sm:p-6">
+      <div className="mt-6 rounded-2xl border border-primary/10 p-4 sm:p-6">
         <div className="flex items-start gap-3">
           <Plus className="size-5" />
           <div>
-            <h3 className="text-xl font-bold">Add a watch-only address</h3>
+            <h3 className="text-lg font-bold">Add a watch-only address</h3>
             <p className="text-sm text-primary/60">Track a public address without importing its recovery phrase or private key.</p>
           </div>
         </div>

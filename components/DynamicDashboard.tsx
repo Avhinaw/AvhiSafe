@@ -331,7 +331,7 @@ export default function DynamicDashboard() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 rounded-xl bg-background p-4">
             <p className="font-semibold">{plan.explanation}</p>
             {plan.warnings.map((warning) => <p key={warning} className="mt-2 text-sm text-amber-700">{warning}</p>)}
-            {plan.ui && <p className="mt-3 text-sm text-primary/65">"{plan.ui.title}" — {plan.ui.layout}, {plan.ui.columns} column{plan.ui.columns === 1 ? "" : "s"}, {plan.ui.accentPreset} accent.</p>}
+            {plan.ui && <p className="mt-3 text-sm text-primary/65">&ldquo;{plan.ui.title}&rdquo; — {plan.ui.layout}, {plan.ui.columns} column{plan.ui.columns === 1 ? "" : "s"}, {plan.ui.accentPreset} accent.</p>}
             <div className="mt-4 flex gap-2">
               <Button disabled={applying || !plan.ui || plan.intent !== "customize_ui"} onClick={applyPlan} className="gap-2">
                 {applying ? <><Loader2 className="size-4 animate-spin" />Saving…</> : <><Check className="size-4" />Apply</>}

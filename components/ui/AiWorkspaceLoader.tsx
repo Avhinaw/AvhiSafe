@@ -11,12 +11,14 @@ export function AiWorkspaceLoader() {
   ];
   const [i, setI] = useState(0);
 
+  const count = messages.length;
+
   useEffect(() => {
     const timer = setInterval(() => {
-      setI((prev) => (prev + 1) % messages.length);
+      setI((prev) => (prev + 1) % count);
     }, 1400);
     return () => clearInterval(timer);
-  }, []);
+  }, [count]);
 
   return (
     <section className="mt-12 flex flex-col items-center gap-4 bg-background p-10 text-center">

@@ -1,3 +1,5 @@
+import { backendUrl, notifySessionExpired } from "./authApi";
+
 export type Dashboard = { _id: string; userId: string; name: string; slug: string; theme: "light" | "dark" | "system"; currency: string; density: "comfortable" | "compact" | "analytics"; isDefault: boolean; widgets: DashboardWidget[]; filters: Record<string, unknown> };
 export type DashboardWidget = { id: string; type: string; title?: string; enabled: boolean; position: number; width: "small" | "medium" | "large" | "full"; config: Record<string, unknown> };
 export type UIComponent =
@@ -8,18 +10,6 @@ export type UIComponent =
 export type UISpec = { version: 1; title: string; description: string; accentPreset: "cyan" | "violet" | "emerald" | "amber" | "rose" | "slate"; layout: "stack" | "grid"; columns: number; components: UIComponent[] };
 export type UIDocument = { _id: string; userId: string; dashboardId: string; version: number; source: "ai" | "system"; prompt?: string; spec: UISpec; createdAt: string; updatedAt: string };
 export type DashboardPlan = { intent: "customize_ui" | "unsupported"; explanation: string; warnings: string[]; requiresApproval: boolean; ui: UISpec | null; source: "ai"; model?: string };
-
-const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://avhisafe-backend.onrender.com";
-
-export function getDashboardUserId() {
-  if (typeof window === "undefined") return "browser-preview";
-  const key = "avhisafe.dashboard.userId";
-  const existing = localStorage.getItem(key);
-  if (existing) return existing;
-  const id = `browser-${crypto.randomUUID()}`;
-  localStorage.setItem(key, id);
-  return id;
-}
 
 const FRIENDLY_ERRORS: Record<string, string> = {
   "Failed to fetch": "Unable to connect to the backend. Please check your internet connection.",
@@ -44,8 +34,9 @@ async function request<T>(path: string, options: RequestInit = {}, timeoutMs = 4
       ...options,
       credentials: "include",
       signal: controller.signal,
-      headers: { "Content-Type": "application/json", "x-user-id": getDashboardUserId(), ...(options.headers || {}) },
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     });
+    if (response.status === 401) notifySessionExpired();
     if (!response.ok) {
       const body = await response.json().catch(() => ({})) as { error?: string };
       throw new Error(body.error || `Request failed (${response.status}).`);

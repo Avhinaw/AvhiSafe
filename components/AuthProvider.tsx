@@ -33,7 +33,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+    const handleSessionExpired = () => setUser(null);
+    window.addEventListener("avhisafe:session-expired", handleSessionExpired);
+    return () => window.removeEventListener("avhisafe:session-expired", handleSessionExpired);
+  }, [refresh]);
 
   const signIn = useCallback(async (chain: AuthChain): Promise<WalletAuthResult> => {
     setSigningIn(chain);

@@ -1,4 +1,4 @@
-import { backendUrl, type AuthChain } from "./authApi";
+import { backendUrl, notifySessionExpired, type AuthChain } from "./authApi";
 
 export type ServerWallet = {
   _id: string;
@@ -23,6 +23,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   });
+  if (response.status === 401) notifySessionExpired();
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(body.error || `Request failed (${response.status}).`);

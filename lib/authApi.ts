@@ -18,12 +18,17 @@ export type WalletAuthResult = { user: AuthUser; session: SessionInfo; address: 
 
 export const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://avhisafe-backend.onrender.com";
 
+export function notifySessionExpired() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("avhisafe:session-expired"));
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${backendUrl}${path}`, {
     ...options,
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   });
+  if (response.status === 401) notifySessionExpired();
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(body.error || `Request failed (${response.status}).`);

@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LayoutDashboard, RotateCcw, Wand2, Check, AlertTriangle, Loader2 } from "lucide-react";
+import { LayoutDashboard, RotateCcw, Wand2, Check, AlertTriangle, Loader2, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import ConnectedWallets from "./ConnectedWallets";
 import PortfolioDashboard from "./PortfolioDashboard";
 import SecurityCenter from "./SecurityCenter";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { applyDashboardPlan, createDashboard, loadWorkspace, planDashboard, undoDashboardUi, type Dashboard, type DashboardPlan, type DashboardWidget, type UIComponent, type UIDocument, type UISpec } from "@/lib/dashboardApi";
+import { applyDashboardPlan, createDashboard, loadDashboard, loadWorkspace, planDashboard, undoDashboardUi, updateDashboard, type Dashboard, type DashboardPlan, type DashboardWidget, type UIComponent, type UIDocument, type UISpec } from "@/lib/dashboardApi";
 import { AiWorkspaceLoader } from "./ui/AiWorkspaceLoader";
 
 const accentClasses: Record<string, string> = {
@@ -202,6 +202,7 @@ function GeneratedUi({ document }: { document: UIDocument }) {
 
 export default function DynamicDashboard() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [uiDocument, setUiDocument] = useState<UIDocument | null>(null);
   const [prompt, setPrompt] = useState("");
   const [plan, setPlan] = useState<DashboardPlan | null>(null);
@@ -216,6 +217,7 @@ export default function DynamicDashboard() {
     try {
       const data = await loadWorkspace();
       setDashboard(data.dashboard);
+      setDashboards(data.dashboards);
       setUiDocument(data.uiDocument);
     } catch (error) {
       setBackendError(error instanceof Error ? error.message : "Couldn't reach the workspace backend.");
@@ -225,6 +227,26 @@ export default function DynamicDashboard() {
   };
 
   useEffect(() => { void load(); }, []);
+
+  const selectDashboard = async (id: string) => {
+    if (!id || id === dashboard?._id) return;
+    try {
+      const result = await loadDashboard(id);
+      setDashboard(result.dashboard);
+      setUiDocument(result.uiDocument);
+      setPlan(null);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Couldn't load that dashboard."); }
+  };
+
+  const saveDashboardSetting = async (patch: Partial<Dashboard>) => {
+    if (!dashboard) return;
+    try {
+      const result = await updateDashboard(dashboard._id, { ...patch, revisionSummary: "Updated dashboard settings" });
+      setDashboard(result.dashboard);
+      setDashboards((items) => items.map((item) => item._id === result.dashboard._id ? result.dashboard : item));
+      toast.success("Dashboard settings saved.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Couldn't save dashboard settings."); }
+  };
 
   const runPlan = async () => {
     if (!dashboard || !uiDocument) return;
@@ -280,6 +302,7 @@ export default function DynamicDashboard() {
     try {
       const result = await createDashboard({ name: "New dashboard", slug: `dashboard-${Date.now()}`, theme: dashboard.theme, currency: dashboard.currency, density: dashboard.density, isDefault: false, widgets: [], filters: {} });
       setDashboard(result.dashboard);
+      setDashboards((items) => [...items, result.dashboard]);
       setUiDocument(result.uiDocument);
       setPlan(null);
       toast.success("New dashboard created.");
@@ -303,10 +326,27 @@ export default function DynamicDashboard() {
       <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h2 className="mt-2 flex items-center gap-3 text-2xl font-black tracking-tight sm:text-4xl"><LayoutDashboard className="size-6 sm:size-8" />{dashboard.name}</h2>
+          <p className="mt-2 text-sm text-primary/55">{dashboard.widgets.filter((widget) => widget.enabled).length} active widgets · {dashboard.density} density</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <select value={dashboard._id} onChange={(event) => void selectDashboard(event.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            {dashboards.map((item) => <option key={item._id} value={item._id}>{item.name}{item.isDefault ? " · Default" : ""}</option>)}
+          </select>
           <Button variant="outline" className="gap-2" onClick={newDashboard}><LayoutDashboard className="size-4" />New dashboard</Button>
           <Button variant="ghost" className="gap-2" onClick={undo}><RotateCcw className="size-4" />Undo</Button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-primary/10 bg-primary/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 text-sm font-bold"><Settings2 className="size-4" />Dashboard settings</div>
+        <div className="flex flex-wrap gap-2">
+          <select aria-label="Dashboard theme" value={dashboard.theme} onChange={(event) => void saveDashboardSetting({ theme: event.target.value as Dashboard["theme"] })} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+            <option value="system">System theme</option><option value="light">Light theme</option><option value="dark">Dark theme</option>
+          </select>
+          <select aria-label="Dashboard density" value={dashboard.density} onChange={(event) => void saveDashboardSetting({ density: event.target.value as Dashboard["density"] })} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+            <option value="comfortable">Comfortable</option><option value="compact">Compact</option><option value="analytics">Analytics</option>
+          </select>
+          <Input aria-label="Dashboard name" defaultValue={dashboard.name} key={dashboard._id + dashboard.name} onBlur={(event) => { const name = event.target.value.trim(); if (name && name !== dashboard.name) void saveDashboardSetting({ name }); }} className="h-9 w-44" />
         </div>
       </div>
 

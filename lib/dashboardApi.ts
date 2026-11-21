@@ -53,6 +53,7 @@ async function request<T>(path: string, options: RequestInit = {}, timeoutMs = 4
 }
 
 export function loadWorkspace() { return request<{ dashboard: Dashboard; uiDocument: UIDocument; dashboards: Dashboard[]; revisions: unknown[]; uiRevisions: unknown[]; addresses: unknown[]; wallets: unknown[]; permissions: unknown[] }>("/api/v1/workspace"); }
+export function loadDashboard(id: string) { return request<{ dashboard: Dashboard; uiDocument: UIDocument }>(`/api/v1/dashboards/${id}`); }
 export function createDashboard(input: Omit<Dashboard, "_id" | "userId">) { return request<{ dashboard: Dashboard; uiDocument: UIDocument }>("/api/v1/dashboards", { method: "POST", body: JSON.stringify(input) }); }
 export function updateDashboard(id: string, input: Partial<Dashboard> & { revisionSummary?: string }) { return request<{ dashboard: Dashboard }>(`/api/v1/dashboards/${id}`, { method: "PATCH", body: JSON.stringify(input) }); }
 export function planDashboard(id: string, prompt: string) { return request<{ plan: DashboardPlan; request: unknown }>("/api/v1/ai/plan", { method: "POST", body: JSON.stringify({ dashboardId: id, prompt }) }, 60000); }

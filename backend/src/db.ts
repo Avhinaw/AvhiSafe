@@ -2,7 +2,7 @@ import { MongoClient, type Db } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { defaultWidgets } from "./widgetCatalog.js";
 import { defaultUiSpec, sanitizeUiSpec } from "./uiSchema.js";
-import type { AIRequestDocument, ConnectedWalletDocument, DashboardDocument, DashboardRevisionDocument, FeaturePermissionDocument, PortfolioSnapshotDocument, PublicAddressDocument, UIDocument, UIRevisionDocument, UserDocument } from "./models/index.js";
+import type { AIRequestDocument, AuthNonceDocument, ConnectedWalletDocument, DashboardDocument, DashboardRevisionDocument, FeaturePermissionDocument, PortfolioSnapshotDocument, PublicAddressDocument, SessionDocument, UIDocument, UIRevisionDocument, UserDocument, WalletDocument } from "./models/index.js";
 
 let client: MongoClient | undefined;
 let database: Db | undefined;
@@ -20,11 +20,14 @@ export async function getDb(): Promise<Db> {
 
 export const collections = {
   users: async () => (await getDb()).collection<UserDocument>("users"),
+  authNonces: async () => (await getDb()).collection<AuthNonceDocument>("auth_nonces"),
+  sessions: async () => (await getDb()).collection<SessionDocument>("sessions"),
   dashboards: async () => (await getDb()).collection<DashboardDocument>("dashboards"),
   revisions: async () => (await getDb()).collection<DashboardRevisionDocument>("dashboard_revisions"),
   aiRequests: async () => (await getDb()).collection<AIRequestDocument>("ai_requests"),
   permissions: async () => (await getDb()).collection<FeaturePermissionDocument>("feature_permissions"),
-  wallets: async () => (await getDb()).collection<ConnectedWalletDocument>("connected_wallets"),
+  connectedWallets: async () => (await getDb()).collection<ConnectedWalletDocument>("connected_wallets"),
+  wallets: async () => (await getDb()).collection<WalletDocument>("wallets"),
   addresses: async () => (await getDb()).collection<PublicAddressDocument>("public_addresses"),
   snapshots: async () => (await getDb()).collection<PortfolioSnapshotDocument>("portfolio_snapshots"),
   uiDocuments: async () => (await getDb()).collection<UIDocument>("ai_ui_documents"),
@@ -102,7 +105,7 @@ export async function listUserPublicAddresses(userId: string) {
 }
 
 export async function listUserWallets(userId: string) {
-  return (await collections.wallets()).find({ userId }).sort({ lastSeenAt: -1 }).toArray();
+  return (await collections.connectedWallets()).find({ userId }).sort({ lastSeenAt: -1 }).toArray();
 }
 
 export async function listUserPermissions(userId: string) {

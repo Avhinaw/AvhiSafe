@@ -3,6 +3,7 @@ export type AuthNonceStatus = "issued" | "used" | "expired" | "revoked";
 export interface AuthNonceDocument {
   _id: string;
   nonce: string;
+  message: string;
   domain: string;
   chainFamily: "ethereum" | "solana";
   address: string;

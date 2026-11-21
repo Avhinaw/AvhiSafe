@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/themeprovider";
 import Footer from "@/components/Footer";
 import { VaultProvider } from "@/components/VaultProvider";
 import VaultGate from "@/components/VaultGate";
+import { AuthProvider } from "@/components/AuthProvider";
 
 const manrope = Manrope({ subsets: ["latin"] });
 
@@ -42,13 +43,15 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <VaultProvider>
-            <Toaster />
-            <VaultGate>
-              {children}
-              <Footer />
-            </VaultGate>
-          </VaultProvider>
+          <AuthProvider>
+            <VaultProvider>
+              <Toaster />
+              <VaultGate>
+                {children}
+                <Footer />
+              </VaultGate>
+            </VaultProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

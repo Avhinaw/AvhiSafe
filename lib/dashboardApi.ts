@@ -42,6 +42,7 @@ async function request<T>(path: string, options: RequestInit = {}, timeoutMs = 4
   try {
     const response = await fetch(`${backendUrl}${path}`, {
       ...options,
+      credentials: "include",
       signal: controller.signal,
       headers: { "Content-Type": "application/json", "x-user-id": getDashboardUserId(), ...(options.headers || {}) },
     });

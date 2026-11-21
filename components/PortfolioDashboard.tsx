@@ -105,16 +105,21 @@ export default function PortfolioDashboard({ embedded = false }: PortfolioDashbo
   const refresh = useCallback(async () => {
     const requestId = ++refreshRequest.current;
     setLoading(true);
-    const results = await Promise.all(addresses.map(loadPortfolio));
-    if (requestId === refreshRequest.current) {
-      setSnapshots(results);
-      const value = results.reduce((sum, snapshot) => sum + (snapshot.nativeValueUsd || 0) + snapshot.tokens.reduce((tokenSum, token) => tokenSum + (token.valueUsd || 0), 0), 0);
-      setHistory((previous) => {
-        const nextHistory = [...previous, { timestamp: Date.now(), value }].slice(-14);
-        localStorage.setItem("portfolioHistory", JSON.stringify(nextHistory));
-        return nextHistory;
-      });
-      setLoading(false);
+    try {
+      const results = await loadPortfolio(addresses);
+      if (requestId === refreshRequest.current) {
+        setSnapshots(results);
+        const value = results.reduce((sum, snapshot) => sum + (snapshot.nativeValueUsd || 0) + snapshot.tokens.reduce((tokenSum, token) => tokenSum + (token.valueUsd || 0), 0), 0);
+        setHistory((previous) => {
+          const nextHistory = [...previous, { timestamp: Date.now(), value }].slice(-14);
+          localStorage.setItem("portfolioHistory", JSON.stringify(nextHistory));
+          return nextHistory;
+        });
+      }
+    } catch (error) {
+      if (requestId === refreshRequest.current) setSnapshots(addresses.map((address) => ({ address, nativeSymbol: address.chain === "ethereum" ? "ETH" : "SOL", nativeBalance: 0, tokens: [], transactions: [], explorerUrl: "", updatedAt: Date.now(), fetchedAt: Date.now(), source: "backend", dataQuality: "error" as const, error: error instanceof Error ? error.message : "Unable to load portfolio data" })));
+    } finally {
+      if (requestId === refreshRequest.current) setLoading(false);
     }
   }, [addresses]);
 
@@ -238,6 +243,7 @@ export default function PortfolioDashboard({ embedded = false }: PortfolioDashbo
                     </div>
                     <h3 className="mt-3 truncate text-lg font-bold tracking-tight sm:text-2xl">{snapshot.address.label}</h3>
                     <p className="mt-1 truncate font-mono text-xs text-primary/60">{snapshot.address.address}</p>
+                    <p className="mt-2 text-xs text-primary/50">Source: {snapshot.source} · {snapshot.dataQuality} · {new Date(snapshot.fetchedAt).toLocaleTimeString()}</p>
                   </div>
                   <div className="flex shrink-0 gap-1">
                     <Button variant="ghost" size="icon" onClick={() => copyAddress(snapshot.address.address)} aria-label="Copy address"><Copy className="size-4" /></Button>

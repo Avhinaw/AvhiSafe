@@ -13,6 +13,7 @@ import { defaultWidgets } from "./widgetCatalog.js";
 import type { DashboardDocument, DashboardRevisionDocument } from "./models/index.js";
 import { authRoutes } from "./routes/authRoutes.js";
 import { walletRoutes } from "./routes/walletRoutes.js";
+import { portfolioRoutes } from "./routes/portfolioRoutes.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { authenticatedUserId, trustedOriginMiddleware } from "./middleware/requestSecurity.js";
 import { securityHeaders } from "./middleware/security.js";
@@ -45,6 +46,7 @@ app.get("/api/v1/ai/status", (_request, response) => { const configured = Boolea
 
 app.use("/api/v1", authenticate);
 app.use("/api/v1", trustedOriginMiddleware(allowedOrigins));
+app.use("/api/v1/portfolio", portfolioRoutes);
 
 app.get("/api/v1/dashboards", async (request, response) => { try { return response.json({ dashboards: await listUserDashboards(authenticatedUserId(request)) }); } catch (error) { return errorResponse(response, error, "Unable to list dashboards.", 401); } });
 app.post("/api/v1/dashboards", async (request, response) => { try { const userId = authenticatedUserId(request); const input = dashboardInput.parse(request.body); const now = new Date(); const dashboard: DashboardDocument = { _id: randomUUID(), userId, ...input, widgets: input.widgets.length ? input.widgets : defaultWidgets(), createdAt: now, updatedAt: now }; const dashboards = await collections.dashboards(); if (dashboard.isDefault) await dashboards.updateMany({ userId }, { $set: { isDefault: false, updatedAt: now } }); await dashboards.insertOne(dashboard); await revisionFor(dashboard, userId, "system", "Created dashboard", undefined, now); const uiDocument = await ensureUIDocument(userId, dashboard._id); return response.status(201).json({ dashboard, uiDocument }); } catch (error) { return errorResponse(response, error, "Invalid dashboard."); } });

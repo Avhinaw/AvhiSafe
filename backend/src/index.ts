@@ -14,6 +14,7 @@ import type { DashboardDocument, DashboardRevisionDocument } from "./models/inde
 import { authRoutes } from "./routes/authRoutes.js";
 import { walletRoutes } from "./routes/walletRoutes.js";
 import { portfolioRoutes } from "./routes/portfolioRoutes.js";
+import { vaultRoutes } from "./routes/vaultRoutes.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { authenticatedUserId, trustedOriginMiddleware } from "./middleware/requestSecurity.js";
 import { securityHeaders } from "./middleware/security.js";
@@ -43,6 +44,7 @@ app.get("/ready", async (_request, response) => { try { await pingDatabase(); re
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/wallets", walletRoutes);
+app.use("/api/v1/vault", vaultRoutes);
 app.get("/api/v1/ai/status", (_request, response) => { const configured = Boolean(process.env.AI_API_KEY || process.env.OPENAI_API_KEY) && Boolean(process.env.AI_API_BASE || process.env.OPENAI_API_BASE); return response.json({ configured, mode: configured ? "ai" : "unconfigured", model: process.env.AI_MODEL || "gemini-3.6-flash" }); });
 
 app.use("/api/v1", authenticate);

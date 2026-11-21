@@ -2,7 +2,7 @@ import { MongoClient, type Db } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { defaultWidgets } from "./widgetCatalog.js";
 import { defaultUiSpec, sanitizeUiSpec } from "./uiSchema.js";
-import type { AIRequestDocument, AuthNonceDocument, ConnectedWalletDocument, DashboardDocument, DashboardRevisionDocument, FeaturePermissionDocument, PortfolioSnapshotDocument, PublicAddressDocument, SessionDocument, UIDocument, UIRevisionDocument, UserDocument, WalletDocument } from "./models/index.js";
+import type { AIRequestDocument, AuthNonceDocument, ConnectedWalletDocument, DashboardDocument, DashboardRevisionDocument, EncryptedVaultDocument, FeaturePermissionDocument, PortfolioSnapshotDocument, PublicAddressDocument, SessionDocument, UIDocument, UIRevisionDocument, UserDocument, WalletDocument } from "./models/index.js";
 
 let client: MongoClient | undefined;
 let database: Db | undefined;
@@ -28,6 +28,7 @@ export const collections = {
   permissions: async () => (await getDb()).collection<FeaturePermissionDocument>("feature_permissions"),
   connectedWallets: async () => (await getDb()).collection<ConnectedWalletDocument>("connected_wallets"),
   wallets: async () => (await getDb()).collection<WalletDocument>("wallets"),
+  encryptedVaults: async () => (await getDb()).collection<EncryptedVaultDocument>("encrypted_vaults"),
   addresses: async () => (await getDb()).collection<PublicAddressDocument>("public_addresses"),
   snapshots: async () => (await getDb()).collection<PortfolioSnapshotDocument>("portfolio_snapshots"),
   uiDocuments: async () => (await getDb()).collection<UIDocument>("ai_ui_documents"),

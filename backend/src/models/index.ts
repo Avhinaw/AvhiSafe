@@ -1,6 +1,7 @@
 export * from "./base.js";
 export * from "./User.model.js";
 export * from "./Wallet.model.js";
+export * from "./EncryptedVault.model.js";
 export * from "./AuthNonce.model.js";
 export * from "./Session.model.js";
 export * from "./Dashboard.model.js";

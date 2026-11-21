@@ -16,6 +16,7 @@ await db.collection("feature_permissions").createIndex({ userId: 1, featureKey: 
 await db.collection("connected_wallets").createIndex({ userId: 1, chain: 1, address: 1 }, { unique: true });
 await db.collection("wallets").createIndex({ userId: 1, chainFamily: 1, normalizedAddress: 1 }, { unique: true, partialFilterExpression: { status: { $in: ["active", "hidden", "archived", "disconnected"] } } });
 await db.collection("wallets").createIndex({ userId: 1, updatedAt: -1 });
+await db.collection("encrypted_vaults").createIndex({ userId: 1 }, { unique: true });
 await db.collection("public_addresses").createIndex({ userId: 1, chain: 1, address: 1 }, { unique: true });
 await db.collection("portfolio_snapshots").createIndex({ userId: 1, address: 1, capturedAt: -1 });
 await db.collection("ai_ui_documents").createIndex({ userId: 1, dashboardId: 1 }, { unique: true });

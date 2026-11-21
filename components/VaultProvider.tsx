@@ -2,7 +2,9 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { downloadBackup, hasVault, loadEncryptedWallets, restoreBackup, saveEncryptedWallets, VaultWallet } from "@/lib/vault";
+import { decryptVault, downloadBackup, encryptVault, hasVault, loadEncryptedWallets, restoreBackup, saveEncryptedWallets, savePublicIndex, VaultWallet, type EncryptedVault } from "@/lib/vault";
+import { loadRemoteVault, saveRemoteVault } from "@/lib/vaultApi";
+import { useAuth } from "./AuthProvider";
 
 interface VaultContextValue {
   wallets: VaultWallet[];
@@ -14,6 +16,8 @@ interface VaultContextValue {
   lock: () => void;
   backup: () => void;
   restore: (file: File, password: string) => Promise<boolean>;
+  remoteBackupAvailable: boolean;
+  restoreRemote: (password: string) => Promise<boolean>;
 }
 
 const VaultContext = createContext<VaultContextValue | null>(null);
@@ -24,6 +28,18 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const [locked, setLocked] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [sessionPassword, setSessionPassword] = useState("");
+  const [remoteVault, setRemoteVault] = useState<(EncryptedVault & { updatedAt?: string }) | null>(null);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user) { setRemoteVault(null); return; }
+    void loadRemoteVault().then((result) => setRemoteVault(result.vault)).catch(() => setRemoteVault(null));
+  }, [user]);
+
+  const syncRemote = useCallback(async (next: VaultWallet[], password: string) => {
+    if (!user || !password) return;
+    try { const encrypted = await encryptVault(next, password); await saveRemoteVault(encrypted); setRemoteVault({ ...encrypted, updatedAt: new Date().toISOString() }); } catch { toast.error("Local vault saved, but account backup sync failed."); }
+  }, [user]);
 
   useEffect(() => {
     const exists = hasVault();
@@ -67,20 +83,25 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       await saveEncryptedWallets(legacy, password);
       localStorage.removeItem("wallets");
       localStorage.removeItem("mnemonics");
-      setConfigured(true); setLocked(false); setSessionPassword(password); setWallets(legacy); toast.success(legacy.length ? "Encrypted vault created and legacy wallets migrated." : "Encrypted vault created."); return true;
+      await syncRemote(legacy, password); setConfigured(true); setLocked(false); setSessionPassword(password); setWallets(legacy); toast.success(legacy.length ? "Encrypted vault created and legacy wallets migrated." : "Encrypted vault created."); return true;
     } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to create vault."); return false; }
-  }, []);
+  }, [syncRemote]);
 
   const persist = useCallback(async (next: VaultWallet[], password = sessionPassword) => {
     if (!password) return false;
-    try { await saveEncryptedWallets(next, password); setWallets(next); return true; } catch { toast.error("Unable to save encrypted vault."); return false; }
-  }, [sessionPassword]);
+    try { await saveEncryptedWallets(next, password); await syncRemote(next, password); setWallets(next); return true; } catch { toast.error("Unable to save encrypted vault."); return false; }
+  }, [sessionPassword, syncRemote]);
 
   const restore = useCallback(async (file: File, password: string) => {
-    try { const next = await restoreBackup(await file.text(), password); setWallets(next); setSessionPassword(password); setConfigured(true); setLocked(false); toast.success("Encrypted backup restored."); return true; } catch { toast.error("Backup or password is invalid."); return false; }
-  }, []);
+    try { const next = await restoreBackup(await file.text(), password); await syncRemote(next, password); setWallets(next); setSessionPassword(password); setConfigured(true); setLocked(false); toast.success("Encrypted backup restored."); return true; } catch { toast.error("Backup or password is invalid."); return false; }
+  }, [syncRemote]);
 
-  const value = useMemo(() => ({ wallets, locked, configured, unlock, create, persist, lock, backup: downloadBackup, restore }), [wallets, locked, configured, unlock, create, persist, lock, restore]);
+  const restoreRemote = useCallback(async (password: string) => {
+    if (!remoteVault) return false;
+    try { const next = await decryptVault(remoteVault, password); localStorage.setItem("avhisafe.encryptedVault.v1", JSON.stringify(remoteVault)); savePublicIndex(next); setWallets(next); setSessionPassword(password); setConfigured(true); setLocked(false); toast.success("Encrypted account vault restored."); return true; } catch { toast.error("Incorrect password or corrupted account backup."); return false; }
+  }, [remoteVault]);
+
+  const value = useMemo(() => ({ wallets, locked, configured, unlock, create, persist, lock, backup: downloadBackup, restore, remoteBackupAvailable: Boolean(remoteVault), restoreRemote }), [wallets, locked, configured, unlock, create, persist, lock, restore, remoteVault, restoreRemote]);
   return <VaultContext.Provider value={value}>{children}</VaultContext.Provider>;
 }
 

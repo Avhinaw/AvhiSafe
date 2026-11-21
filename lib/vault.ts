@@ -15,7 +15,7 @@ export interface PublicWalletIndex {
   label?: string;
 }
 
-interface EncryptedVault {
+export interface EncryptedVault {
   version: 1;
   salt: string;
   iv: string;

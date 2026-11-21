@@ -1,6 +1,8 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { useVault } from "./VaultProvider";
+import { useAuth } from "./AuthProvider";
+import { listServerWallets, removeServerWallet, saveGeneratedWallet } from "@/lib/walletApi";
 import type { VaultWallet } from "@/lib/vault";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
@@ -48,12 +50,18 @@ const WalletGenerator = () => {
   const [visiblePhrases, setVisiblePhrases] = useState<boolean[]>([]);
   const [gridView, setGridView] = useState<boolean>(false);
   const { wallets: securedWallets, persist } = useVault();
+  const { user } = useAuth();
   const pathTypeNames: { [key: string]: string } = {
     "501": "Solana",
     "60": "Ethereum",
   };
 
   const pathTypeName = pathTypeNames[pathTypes[0]] || "";
+
+  const removeGeneratedRecord = (publicKey?: string) => {
+    if (!user) return;
+    void listServerWallets().then(({ wallets: saved }) => Promise.all(saved.filter((item) => item.sourceType === "generated" && (!publicKey || item.address.toLowerCase() === publicKey.toLowerCase())).map((item) => removeServerWallet(item._id)))).catch(() => undefined);
+  };
 
   useEffect(() => {
     setWallets(securedWallets);
@@ -65,7 +73,18 @@ const WalletGenerator = () => {
     }
   }, [securedWallets]);
 
+  useEffect(() => {
+    if (!user || securedWallets.length === 0) return;
+    void Promise.all(securedWallets.map((wallet, index) => saveGeneratedWallet({
+      chainFamily: wallet.path.includes("501") ? "solana" : "ethereum",
+      address: wallet.publicKey,
+      supportedNetworks: [wallet.path.includes("501") ? "solana-mainnet" : "ethereum-mainnet"],
+      label: wallet.label || `Generated ${wallet.path.includes("501") ? "Solana" : "EVM"} wallet ${index + 1}`,
+    }).catch(() => undefined)));
+  }, [securedWallets, user]);
+
   const handleDeleteWallet = (index: number) => {
+    removeGeneratedRecord(wallets[index]?.publicKey);
     const updatedWallets = wallets.filter((_, i) => i !== index);
     const updatedPathTypes = pathTypes.filter((_, i) => i !== index);
 
@@ -80,6 +99,7 @@ const WalletGenerator = () => {
   };
 
   const handleClearWallets = () => {
+    removeGeneratedRecord();
     void persist([]);
     localStorage.removeItem("mnemonics");
     localStorage.removeItem("paths");

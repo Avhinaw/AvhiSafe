@@ -7,6 +7,7 @@ export interface AuthContext {
   userId: string;
   sessionId: string;
   expiresAt: Date;
+  role: "user" | "admin";
 }
 
 function sha256(value: string) {
@@ -42,8 +43,10 @@ export async function authenticate(request: Request, response: Response, next: N
       clearSessionCookie(response);
       return response.status(401).json({ error: "Session has expired." });
     }
+    const user = await (await collections.users()).findOne({ _id: session.userId });
+    if (!user || user.status !== "active") return response.status(403).json({ error: "This account is not active." });
     await (await collections.sessions()).updateOne({ _id: session._id }, { $set: { lastUsedAt: new Date() } });
-    request.auth = { userId: session.userId, sessionId: session._id, expiresAt: session.expiresAt };
+    request.auth = { userId: session.userId, sessionId: session._id, expiresAt: session.expiresAt, role: user.role || "user" };
     return next();
   } catch (error) {
     return response.status(401).json({ error: error instanceof Error ? error.message : "Authentication failed." });

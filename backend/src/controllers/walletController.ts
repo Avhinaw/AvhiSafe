@@ -15,7 +15,7 @@ function requireUser(request: Request, response: Response) {
   return request.auth.userId;
 }
 
-async function createWallet(request: Request, response: Response, sourceType: "connected" | "watch_only") {
+async function createWallet(request: Request, response: Response, sourceType: "connected" | "watch_only" | "generated") {
   try {
     const userId = requireUser(request, response);
     if (!userId) return;
@@ -32,6 +32,7 @@ async function createWallet(request: Request, response: Response, sourceType: "c
       );
       return response.status(200).json({ wallet: updated || existing });
     }
+    if (existing?.sourceType === "generated" && sourceType === "generated") return response.status(200).json({ wallet: existing });
     if (existing) return response.status(409).json({ error: "This wallet is already connected to the user account.", wallet: existing });
     const now = new Date();
     const wallet: WalletDocument = { _id: randomUUID(), userId, chainFamily: input.chainFamily, address: displayWalletAddress(input.chainFamily, normalizedAddress), normalizedAddress, label: input.label, sourceType, supportedNetworks: input.supportedNetworks, status: "active", provider: input.provider, connectionId: input.connectionId, createdBy: "user", createdAt: now, updatedAt: now };
@@ -52,6 +53,7 @@ export async function listWallets(request: Request, response: Response) {
 
 export async function addWatchOnlyWallet(request: Request, response: Response) { return createWallet(request, response, "watch_only"); }
 export async function connectWallet(request: Request, response: Response) { return createWallet(request, response, "connected"); }
+export async function addGeneratedWallet(request: Request, response: Response) { return createWallet(request, response, "generated"); }
 
 export async function updateWallet(request: Request, response: Response) {
   try {

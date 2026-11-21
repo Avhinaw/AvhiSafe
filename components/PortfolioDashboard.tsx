@@ -15,6 +15,7 @@ import {
 } from "@/lib/portfolio";
 import { readPublicIndex } from "@/lib/vault";
 import { readConnectedWallets } from "@/lib/connectedWallet";
+import { listServerWallets } from "@/lib/walletApi";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
@@ -87,7 +88,7 @@ export default function PortfolioDashboard({ embedded = false }: PortfolioDashbo
   const [history, setHistory] = useState<Array<{ timestamp: number; value: number }>>([]);
   const refreshRequest = useRef(0);
 
-  const syncAddresses = useCallback(() => {
+  const syncAddresses = useCallback(async () => {
     const wallets = readPublicIndex();
     const generated: PortfolioAddress[] = wallets.map((wallet, index) => ({
       id: `wallet-${index}-${wallet.publicKey}`,
@@ -98,7 +99,9 @@ export default function PortfolioDashboard({ embedded = false }: PortfolioDashbo
       walletIndex: index,
     }));
     const connected = readConnectedWallets().map((wallet): PortfolioAddress => ({ id: `connected-${wallet.id}`, label: wallet.label, address: wallet.address, chain: wallet.chain, source: "connected" }));
-    const combined = [...generated, ...connected, ...getStoredWatchAddresses().filter((watch) => !generated.some((item) => item.address === watch.address && item.chain === watch.chain) && !connected.some((item) => item.address === watch.address && item.chain === watch.chain))];
+    const serverWallets = await listServerWallets().catch(() => ({ wallets: [] }));
+    const restored = serverWallets.wallets.filter((wallet) => wallet.status === "active").map((wallet): PortfolioAddress => ({ id: `server-${wallet._id}`, label: wallet.label || `${wallet.sourceType === "generated" ? "Generated" : "Saved"} ${wallet.chainFamily}`, address: wallet.address, chain: wallet.chainFamily, source: wallet.sourceType === "watch_only" ? "watch" : wallet.sourceType === "generated" ? "wallet" : "connected" }));
+    const combined = [...generated, ...connected, ...restored, ...getStoredWatchAddresses().filter((watch) => !generated.some((item) => item.address === watch.address && item.chain === watch.chain) && !connected.some((item) => item.address === watch.address && item.chain === watch.chain) && !restored.some((item) => item.address === watch.address && item.chain === watch.chain))];
     setAddresses(combined);
   }, []);
 

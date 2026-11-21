@@ -7,7 +7,7 @@ export type ServerWallet = {
   address: string;
   normalizedAddress: string;
   label?: string;
-  sourceType: "connected" | "watch_only" | "exchange_read_only";
+  sourceType: "connected" | "watch_only" | "generated" | "exchange_read_only";
   supportedNetworks: string[];
   status: "active" | "hidden" | "archived" | "disconnected" | "removed";
   provider?: string;
@@ -39,6 +39,10 @@ export function saveConnectedWallet(input: { chainFamily: AuthChain; address: st
 
 export function saveWatchOnlyWallet(input: { chainFamily: AuthChain; address: string; supportedNetworks: string[]; label?: string }) {
   return request<{ wallet: ServerWallet }>("/api/v1/wallets/watch-only", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function saveGeneratedWallet(input: { chainFamily: AuthChain; address: string; supportedNetworks: string[]; label?: string }) {
+  return request<{ wallet: ServerWallet }>("/api/v1/wallets/generated", { method: "POST", body: JSON.stringify(input) });
 }
 
 export function updateServerWallet(walletId: string, input: { label?: string | null; status?: ServerWallet["status"]; supportedNetworks?: string[] }) {

@@ -1,7 +1,7 @@
 import type { Timestamps } from "./base.js";
 
 export type ChainFamily = "ethereum" | "solana";
-export type WalletSourceType = "connected" | "watch_only" | "exchange_read_only";
+export type WalletSourceType = "connected" | "watch_only" | "generated" | "exchange_read_only";
 export type WalletStatus = "active" | "hidden" | "archived" | "disconnected" | "removed";
 
 export interface WalletDocument extends Timestamps {

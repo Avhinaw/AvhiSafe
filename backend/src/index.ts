@@ -1,6 +1,6 @@
 import "dotenv/config";
 import cors from "cors";
-import express, { type Request, type Response } from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { aiApplyInput } from "./aiApplySchema.js";
@@ -28,6 +28,7 @@ app.use(cors({ credentials: true, origin: (requestOrigin, callback) => { const n
 app.use(express.json({ limit: "512kb" }));
 
 function errorResponse(response: Response, error: unknown, fallback: string, status = 400) { return response.status(status).json({ error: error instanceof Error ? error.message : fallback }); }
+function requireRole(...roles: Array<"user" | "admin">) { return (request: Request, response: Response, next: NextFunction) => { if (!request.auth) return response.status(401).json({ error: "Authentication required." }); if (!roles.includes(request.auth.role)) return response.status(403).json({ error: "Insufficient role for this resource." }); return next(); }; }
 
 const widgetSchema = z.object({ id: z.string().min(1).max(100), type: z.string().min(1).max(80), title: z.string().max(160).optional(), enabled: z.boolean(), position: z.number().int().min(0).max(1000), width: z.enum(["small", "medium", "large", "full"]), config: z.record(z.string(), z.unknown()).default({}) });
 const dashboardInput = z.object({ name: z.string().trim().min(1).max(120), slug: z.string().trim().regex(/^[a-z0-9-]{1,80}$/), theme: z.enum(["light", "dark", "system"]), currency: z.string().trim().regex(/^[A-Z]{3,8}$/), density: z.enum(["comfortable", "compact", "analytics"]), isDefault: z.boolean().default(false), widgets: z.array(widgetSchema).max(100), filters: z.record(z.string(), z.unknown()).default({}) });
@@ -47,6 +48,7 @@ app.get("/api/v1/ai/status", (_request, response) => { const configured = Boolea
 app.use("/api/v1", authenticate);
 app.use("/api/v1", trustedOriginMiddleware(allowedOrigins));
 app.use("/api/v1/portfolio", portfolioRoutes);
+app.get("/api/v1/admin/dashboard-analytics", requireRole("admin"), async (_request, response) => { try { const [users, dashboards, wallets] = await Promise.all([collections.users(), collections.dashboards(), collections.wallets()]); return response.json({ role: "admin", totals: { users: await users.countDocuments({ status: "active" }), dashboards: await dashboards.countDocuments(), wallets: await wallets.countDocuments({ status: { $ne: "removed" } }) } }); } catch (error) { return errorResponse(response, error, "Unable to load admin analytics.", 500); } });
 
 app.get("/api/v1/dashboards", async (request, response) => { try { return response.json({ dashboards: await listUserDashboards(authenticatedUserId(request)) }); } catch (error) { return errorResponse(response, error, "Unable to list dashboards.", 401); } });
 app.post("/api/v1/dashboards", async (request, response) => { try { const userId = authenticatedUserId(request); const input = dashboardInput.parse(request.body); const now = new Date(); const dashboard: DashboardDocument = { _id: randomUUID(), userId, ...input, widgets: input.widgets.length ? input.widgets : defaultWidgets(), createdAt: now, updatedAt: now }; const dashboards = await collections.dashboards(); if (dashboard.isDefault) await dashboards.updateMany({ userId }, { $set: { isDefault: false, updatedAt: now } }); await dashboards.insertOne(dashboard); await revisionFor(dashboard, userId, "system", "Created dashboard", undefined, now); const uiDocument = await ensureUIDocument(userId, dashboard._id); return response.status(201).json({ dashboard, uiDocument }); } catch (error) { return errorResponse(response, error, "Invalid dashboard."); } });

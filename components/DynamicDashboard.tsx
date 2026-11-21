@@ -11,6 +11,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { applyDashboardPlan, createDashboard, loadDashboard, loadWorkspace, planDashboard, undoDashboardUi, updateDashboard, type Dashboard, type DashboardPlan, type DashboardWidget, type UIComponent, type UIDocument, type UISpec } from "@/lib/dashboardApi";
 import { AiWorkspaceLoader } from "./ui/AiWorkspaceLoader";
+import { useAuth } from "./AuthProvider";
 
 const accentClasses: Record<string, string> = {
   cyan: "border-cyan-500/30 bg-cyan-500/[0.04]",
@@ -227,6 +228,7 @@ function GeneratedUi({ document, density }: { document: UIDocument; density: Das
 }
 
 export default function DynamicDashboard() {
+  const { user, loading: authLoading } = useAuth();
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [uiDocument, setUiDocument] = useState<UIDocument | null>(null);
@@ -252,7 +254,7 @@ export default function DynamicDashboard() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { if (user) void load(); else setLoading(false); }, [user]);
 
   const selectDashboard = async (id: string) => {
     if (!id || id === dashboard?._id) return;
@@ -335,8 +337,16 @@ export default function DynamicDashboard() {
     } catch { toast.error("Couldn't create a new dashboard."); }
   };
 
-  if (loading) return (
+  if (authLoading || loading) return (
     <AiWorkspaceLoader />
+  );
+
+  if (!user) return (
+    <section className="rounded-[2rem] border border-primary/10 bg-gradient-to-br from-primary/[0.06] to-background p-8 text-center shadow-sm sm:p-12">
+      <ShieldCheck className="mx-auto size-10 text-primary/60" />
+      <h2 className="mt-4 text-2xl font-black tracking-tight">Sign in to open your analytics desk</h2>
+      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-primary/60">Connect an EVM or Solana wallet from the top bar. Your dashboards, generated public-wallet records, layouts, and portfolio history are scoped to that account.</p>
+    </section>
   );
 
   if (!dashboard || !uiDocument) return (
@@ -352,7 +362,7 @@ export default function DynamicDashboard() {
       <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h2 className="mt-2 flex items-center gap-3 text-2xl font-black tracking-tight sm:text-4xl"><LayoutDashboard className="size-6 sm:size-8" />{dashboard.name}</h2>
-          <p className="mt-2 text-sm text-primary/55">{dashboard.widgets.filter((widget) => widget.enabled).length} active widgets · {dashboard.density} density</p>
+          <p className="mt-2 text-sm text-primary/55">{dashboard.widgets.filter((widget) => widget.enabled).length} active widgets · {dashboard.density} density · <span className="font-semibold text-primary/70">{user.role || "user"}</span> access</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <select value={dashboard._id} onChange={(event) => void selectDashboard(event.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">

@@ -42,6 +42,10 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   useEffect(() => {
+    if (user && sessionPassword) void syncRemote(wallets, sessionPassword);
+  }, [user, sessionPassword, syncRemote]);
+
+  useEffect(() => {
     const exists = hasVault();
     setConfigured(exists);
     setLocked(exists);
@@ -69,12 +73,13 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const unlock = useCallback(async (password: string) => {
     try {
       const next = await loadEncryptedWallets(password);
+      await syncRemote(next, password);
       setWallets(next);
       setSessionPassword(password);
       setLocked(false);
       return true;
     } catch { toast.error("Incorrect password or corrupted vault."); return false; }
-  }, []);
+  }, [syncRemote]);
 
   const create = useCallback(async (password: string) => {
     try {

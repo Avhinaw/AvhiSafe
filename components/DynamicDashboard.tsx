@@ -30,6 +30,10 @@ const PROMPT_SUGGESTIONS = [
   "Show everything — all widgets in a 2-column grid with violet theme",
 ];
 
+function DashboardKpi({ icon: Icon, label, value, detail, tone }: { icon: typeof Activity; label: string; value: string; detail: string; tone: string }) {
+  return <motion.div whileHover={{ y: -3 }} className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.07] p-4 text-white backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.12]"><div className={`mb-5 flex size-9 items-center justify-center rounded-xl ${tone}`}><Icon className="size-4" /></div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">{label}</p><p className="mt-1 text-xl font-black tracking-tight">{value}</p><p className="mt-1 text-xs text-white/45">{detail}</p><div className="absolute -bottom-8 -right-5 size-20 rounded-full bg-white/10 blur-2xl transition-transform duration-500 group-hover:scale-150" /></motion.div>;
+}
+
 function widgetLabel(widget: DashboardWidget) { return widget.title || widget.type.replaceAll("-", " "); }
 
 const widgetMeta: Record<string, { icon: typeof Activity; eyebrow: string; accent: string; value: string; detail: string }> = {
@@ -357,36 +361,34 @@ export default function DynamicDashboard() {
     </section>
   );
 
+  const activeWidgetCount = dashboard.widgets.filter((widget) => widget.enabled).length;
   return (
-    <section className="flex flex-col gap-6 rounded-3xl bg-background text-foreground transition-colors duration-200">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h2 className="mt-2 flex items-center gap-3 text-2xl font-black tracking-tight sm:text-4xl"><LayoutDashboard className="size-6 sm:size-8" />{dashboard.name}</h2>
-          <p className="mt-2 text-sm text-primary/55">{dashboard.widgets.filter((widget) => widget.enabled).length} active widgets · {dashboard.density} density · <span className="font-semibold text-primary/70">{user.role || "user"}</span> access</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <select value={dashboard._id} onChange={(event) => void selectDashboard(event.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+    <section className="relative flex flex-col gap-7 overflow-hidden rounded-[2.5rem] bg-[#0b1220] p-3 text-white shadow-2xl shadow-slate-950/20 transition-colors duration-200 sm:p-5">
+      <div className="pointer-events-none absolute -left-32 -top-40 size-[30rem] rounded-full bg-cyan-500/10 blur-3xl" /><div className="pointer-events-none absolute -bottom-48 -right-20 size-[28rem] rounded-full bg-violet-500/10 blur-3xl" />
+      <div className="relative flex flex-col gap-6 rounded-[2rem] border border-white/10 bg-gradient-to-br from-slate-900 via-[#101b30] to-[#0c1526] p-5 sm:p-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div><div className="mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-cyan-300/70"><span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.9)]" />AvhiSafe command center <span className="text-white/25">/</span> {user.role || "user"} access</div><h2 className="flex items-center gap-3 text-3xl font-black tracking-[-0.04em] sm:text-5xl"><LayoutDashboard className="size-7 text-cyan-300 sm:size-9" />{dashboard.name}</h2><p className="mt-3 max-w-xl text-sm leading-6 text-white/55">A private, read-only intelligence desk for your wallets, risk posture, and on-chain activity.</p></div>
+          <div className="flex flex-wrap gap-2">
+          <select value={dashboard._id} onChange={(event) => void selectDashboard(event.target.value)} className="h-10 rounded-md border border-white/15 bg-white/10 px-3 text-sm text-white outline-none">
             {dashboards.map((item) => <option key={item._id} value={item._id}>{item.name}{item.isDefault ? " · Default" : ""}</option>)}
           </select>
-          <Button variant="outline" className="gap-2" onClick={newDashboard}><LayoutDashboard className="size-4" />New dashboard</Button>
-          <Button variant="ghost" className="gap-2" onClick={undo}><RotateCcw className="size-4" />Undo</Button>
+          <Button variant="outline" className="gap-2 border-white/15 bg-white/5 text-white hover:bg-white/15" onClick={newDashboard}><LayoutDashboard className="size-4" />New dashboard</Button>
+          <Button variant="ghost" className="gap-2 text-white/70 hover:bg-white/10 hover:text-white" onClick={undo}><RotateCcw className="size-4" />Undo</Button>
+          </div>
         </div>
+        <div className="grid gap-3 sm:grid-cols-3"><DashboardKpi icon={CircleDollarSign} label="Portfolio pulse" value="Read-only" detail="Provider data protected" tone="bg-cyan-400/15 text-cyan-200" /><DashboardKpi icon={Wallet} label="Tracked surface" value={`${activeWidgetCount} widgets`} detail="Across your workspace" tone="bg-violet-400/15 text-violet-200" /><DashboardKpi icon={ShieldCheck} label="Account posture" value="Protected" detail={`${dashboard.density} analytics mode`} tone="bg-emerald-400/15 text-emerald-200" /></div>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-primary/10 bg-primary/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2 text-sm font-bold"><Settings2 className="size-4" />Dashboard settings</div>
+      <div className="relative flex flex-col gap-3 rounded-[2rem] border border-primary/10 bg-background p-4 text-foreground shadow-xl shadow-black/5 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Settings2 className="size-4" /></div><div><p className="text-sm font-black">Workspace controls</p><p className="text-xs text-primary/50">Tune the desk without leaving your account.</p></div></div>
         <div className="flex flex-wrap gap-2">
-          <select aria-label="Dashboard theme" value={dashboard.theme} onChange={(event) => void saveDashboardSetting({ theme: event.target.value as Dashboard["theme"] })} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
-            <option value="system">System theme</option><option value="light">Light theme</option><option value="dark">Dark theme</option>
-          </select>
-          <select aria-label="Dashboard density" value={dashboard.density} onChange={(event) => void saveDashboardSetting({ density: event.target.value as Dashboard["density"] })} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
-            <option value="comfortable">Comfortable</option><option value="compact">Compact</option><option value="analytics">Analytics</option>
-          </select>
+          <select aria-label="Dashboard theme" value={dashboard.theme} onChange={(event) => void saveDashboardSetting({ theme: event.target.value as Dashboard["theme"] })} className="h-9 rounded-md border border-input bg-background px-2 text-sm"><option value="system">System theme</option><option value="light">Light theme</option><option value="dark">Dark theme</option></select>
+          <select aria-label="Dashboard density" value={dashboard.density} onChange={(event) => void saveDashboardSetting({ density: event.target.value as Dashboard["density"] })} className="h-9 rounded-md border border-input bg-background px-2 text-sm"><option value="comfortable">Comfortable</option><option value="compact">Compact</option><option value="analytics">Analytics</option></select>
           <Input aria-label="Dashboard name" defaultValue={dashboard.name} key={dashboard._id + dashboard.name} onBlur={(event) => { const name = event.target.value.trim(); if (name && name !== dashboard.name) void saveDashboardSetting({ name }); }} className="h-9 w-44" />
         </div>
       </div>
 
-      <div className="rounded-2xl bg-primary/[0.03] p-5">
+      <div className="relative rounded-[2rem] border border-primary/10 bg-background p-5 text-foreground shadow-xl shadow-black/5 sm:p-6">
         <div className="text-sm font-bold">Describe the layout you want</div>
         <p className="mt-2 text-xs text-primary/55">Change the theme, reorder widgets, or adjust columns.</p>
         <div className="mt-3 flex flex-wrap gap-2">

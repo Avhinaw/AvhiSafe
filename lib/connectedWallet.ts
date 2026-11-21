@@ -20,6 +20,7 @@ interface SolanaProvider {
   publicKey?: { toString(): string };
   isConnected?: boolean;
   connect(): Promise<{ publicKey?: { toString(): string } }>;
+  signMessage?: (message: Uint8Array, display?: string) => Promise<Uint8Array | { signature: Uint8Array }>;
   disconnect?: () => Promise<void>;
   on?: (event: string, handler: (...args: unknown[]) => void) => void;
   removeListener?: (event: string, handler: (...args: unknown[]) => void) => void;

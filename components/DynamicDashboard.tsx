@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LayoutDashboard, RotateCcw, Wand2, Check, AlertTriangle, Loader2, Settings2 } from "lucide-react";
+import { Activity, ArrowUpRight, BarChart3, CircleDollarSign, Gauge, LayoutDashboard, RotateCcw, Wand2, Check, AlertTriangle, Loader2, Settings2, ShieldCheck, Sparkles, Wallet, Waves } from "lucide-react";
 import { toast } from "sonner";
 import ConnectedWallets from "./ConnectedWallets";
 import PortfolioDashboard from "./PortfolioDashboard";
@@ -31,16 +31,36 @@ const PROMPT_SUGGESTIONS = [
 
 function widgetLabel(widget: DashboardWidget) { return widget.title || widget.type.replaceAll("-", " "); }
 
+const widgetMeta: Record<string, { icon: typeof Activity; eyebrow: string; accent: string; value: string; detail: string }> = {
+  balances: { icon: Wallet, eyebrow: "Network spread", accent: "text-sky-600 dark:text-sky-300", value: "ETH  ·  SOL", detail: "Native balances" },
+  "token-holdings": { icon: CircleDollarSign, eyebrow: "Asset mix", accent: "text-violet-600 dark:text-violet-300", value: "12 assets", detail: "Token holdings" },
+  transactions: { icon: Activity, eyebrow: "Live ledger", accent: "text-amber-600 dark:text-amber-300", value: "Recent activity", detail: "Review your latest movements" },
+  "portfolio-history": { icon: BarChart3, eyebrow: "Performance", accent: "text-emerald-600 dark:text-emerald-300", value: "Trendline ready", detail: "Historical portfolio value" },
+  "risk-summary": { icon: ShieldCheck, eyebrow: "Risk desk", accent: "text-rose-600 dark:text-rose-300", value: "Low exposure", detail: "No urgent review items" },
+  "defi-positions": { icon: Waves, eyebrow: "Protocols", accent: "text-cyan-600 dark:text-cyan-300", value: "Coming online", detail: "Staking, lending and liquidity" },
+  "nft-gallery": { icon: Sparkles, eyebrow: "Collectibles", accent: "text-fuchsia-600 dark:text-fuchsia-300", value: "Gallery ready", detail: "NFT holdings and metadata" },
+};
+
+function InsightWidget({ widgetType }: { widgetType: string }) {
+  const meta = widgetMeta[widgetType] || { icon: Gauge, eyebrow: "Workspace signal", accent: "text-primary", value: "Awaiting sync", detail: widgetType.replaceAll("-", " ") };
+  const Icon = meta.icon;
+  return (
+    <motion.div whileHover={{ y: -4 }} transition={{ type: "spring", stiffness: 280, damping: 20 }} className="group relative overflow-hidden rounded-2xl border border-primary/10 bg-background/80 p-5 shadow-sm transition-shadow duration-300 hover:shadow-xl hover:shadow-primary/10">
+      <div className="absolute -right-10 -top-10 size-28 rounded-full bg-primary/[0.06] blur-2xl transition-transform duration-500 group-hover:scale-150" />
+      <div className="relative flex items-start justify-between gap-3"><div className={`flex size-10 items-center justify-center rounded-xl bg-primary/[0.07] ${meta.accent}`}><Icon className="size-5" /></div><ArrowUpRight className="size-4 text-primary/30 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div>
+      <p className="relative mt-5 text-[10px] font-black uppercase tracking-[0.18em] text-primary/45">{meta.eyebrow}</p>
+      <p className="relative mt-2 text-xl font-black tracking-tight">{meta.value}</p>
+      <p className="relative mt-1 text-sm text-primary/55">{meta.detail}</p>
+      <div className="relative mt-5 h-1 overflow-hidden rounded-full bg-primary/10"><motion.div initial={{ width: 0 }} animate={{ width: widgetType === "risk-summary" ? "28%" : "68%" }} transition={{ delay: 0.25, duration: 0.8 }} className={`h-full rounded-full bg-current ${meta.accent}`} /></div>
+    </motion.div>
+  );
+}
+
 function RegisteredWidget({ widgetType }: { widgetType: string }) {
   if (widgetType === "connected-wallets") return <ConnectedWallets />;
   if (widgetType === "portfolio-value") return <PortfolioDashboard />;
   if (widgetType === "security-score") return <SecurityCenter />;
-  return (
-    <div className="rounded-xl bg-primary/[0.03] p-8 text-center">
-      <p className="font-semibold capitalize">{widgetType.replaceAll("-", " ")}</p>
-      <p className="mt-2 text-sm text-primary/55">No renderer registered for this widget type yet.</p>
-    </div>
-  );
+  return <InsightWidget widgetType={widgetType} />;
 }
 
 function SafeComponent({ children }: { children: React.ReactNode }) {
@@ -71,7 +91,7 @@ function GeneratedComponent({ component }: { component: UIComponent }) {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -12 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
-        className={ITEM_WRAP_CLASS}
+        className={`${ITEM_WRAP_CLASS} transition-transform duration-300 hover:translate-y-[-2px]`}
       >
         <div className="mb-2 px-1 text-xs font-bold uppercase tracking-wider text-primary/45">
           {component.title || component.widgetType.replaceAll("-", " ")}
@@ -145,11 +165,17 @@ function GeneratedComponent({ component }: { component: UIComponent }) {
   );
 }
 
-function GeneratedUi({ document }: { document: UIDocument }) {
+function GeneratedUi({ document, density }: { document: UIDocument; density: Dashboard["density"] }) {
   const spec = document.spec;
-  const components = useMemo(() => spec.components || [], [spec.components]);
+  const components = useMemo(() => {
+    const base = spec.components || [];
+    if (density !== "analytics" || base.length >= 6) return base;
+    const existing = new Set(base.filter((item) => item.type === "widget").map((item) => item.widgetType));
+    const extras: UIComponent[] = ["balances", "token-holdings", "transactions", "portfolio-history", "risk-summary"].filter((widgetType) => !existing.has(widgetType)).map((widgetType) => ({ type: "widget", id: `analytics-${widgetType}`, widgetType, title: widgetType.replaceAll("-", " "), width: "medium" }));
+    return [...base, ...extras].slice(0, 9);
+  }, [density, spec.components]);
   const accent = accentClasses[spec.accentPreset] || accentClasses.cyan;
-  const columns = Math.max(1, Math.min(4, Number(spec.columns) || 2));
+  const columns = density === "analytics" ? Math.max(2, Math.min(4, Number(spec.columns) || 3)) : Math.max(1, Math.min(4, Number(spec.columns) || 2));
 
   // Masonry via CSS multi-column layout instead of CSS grid.
   // Grid advances every column in lockstep row-by-row, so a tall widget in
@@ -170,12 +196,12 @@ function GeneratedUi({ document }: { document: UIDocument }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className={`rounded-3xl p-4 sm:p-6 ${accent}`}
+      className={`relative overflow-hidden rounded-[2rem] border p-4 shadow-[0_18px_70px_-35px_rgba(15,23,42,0.45)] sm:p-6 ${accent} ${density === "analytics" ? "bg-gradient-to-br from-background via-background to-primary/[0.04]" : ""}`}
       data-ui-version={document.version}
       data-ui-source={document.source}
     >
       <div className="mb-6">
-        <h3 className="text-xl font-black tracking-tight sm:text-3xl">{spec.title || "Workspace"}</h3>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-primary/45">{density === "analytics" ? "Analytics desk" : "Personal workspace"}</p><h3 className="text-xl font-black tracking-tight sm:text-3xl">{spec.title || "Workspace"}</h3></div><div className="flex items-center gap-2 text-xs font-semibold text-primary/45"><span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]" />Live workspace</div></div>
         {spec.description && <p className="mt-2 max-w-2xl text-sm leading-6 text-primary/60">{spec.description}</p>}
       </div>
 
@@ -382,7 +408,7 @@ export default function DynamicDashboard() {
         )}
       </div>
 
-      <GeneratedUi document={uiDocument} />
+      <GeneratedUi document={uiDocument} density={dashboard.density} />
     </section>
   );
 }

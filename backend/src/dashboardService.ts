@@ -25,7 +25,7 @@ export function applyOperations(dashboard: DashboardDocument, operations: Dashbo
 }
 
 export async function revisionFor(dashboard: DashboardDocument, userId: string, source: DashboardRevisionDocument["source"], summary: string, prompt?: string, now = new Date()): Promise<DashboardRevisionDocument> {
-  const revision: DashboardRevisionDocument = { _id: randomUUID(), userId, dashboardId: dashboard._id, source, prompt, summary, snapshot: { name: dashboard.name, theme: dashboard.theme, currency: dashboard.currency, density: dashboard.density, widgets: dashboard.widgets, filters: dashboard.filters }, createdAt: now };
+  const revision: DashboardRevisionDocument = { _id: randomUUID(), userId, dashboardId: dashboard._id, version: dashboard.version ?? 1, source, changeSource: source, prompt, summary, changeSummary: summary, snapshot: { name: dashboard.name, theme: dashboard.theme, currency: dashboard.currency, density: dashboard.density, widgets: dashboard.widgets, filters: dashboard.filters }, createdAt: now };
   await createDashboardRevision(revision);
   return revision;
 }

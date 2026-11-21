@@ -11,12 +11,14 @@ import { saveUiForUser, uiRevisionFor } from "./uiService.js";
 import { applyOperations, revisionFor } from "./dashboardService.js";
 import { defaultWidgets } from "./widgetCatalog.js";
 import type { DashboardDocument, DashboardRevisionDocument } from "./models/index.js";
+import { authRoutes } from "./routes/authRoutes.js";
+import { walletRoutes } from "./routes/walletRoutes.js";
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
 const configuredOrigins = (process.env.CORS_ORIGIN || "").split(",").map((value) => value.trim().replace(/\/$/, "")).filter(Boolean);
 const allowedOrigins = new Set(["https://avhisafe.netlify.app", ...configuredOrigins]);
-app.use(cors({ origin: (requestOrigin, callback) => { const normalizedOrigin = requestOrigin?.replace(/\/$/, ""); if (!normalizedOrigin || configuredOrigins.includes("*") || allowedOrigins.has(normalizedOrigin)) callback(null, true); else callback(new Error("CORS origin not allowed")); } }));
+app.use(cors({ credentials: true, origin: (requestOrigin, callback) => { const normalizedOrigin = requestOrigin?.replace(/\/$/, ""); if (!normalizedOrigin || configuredOrigins.includes("*") || allowedOrigins.has(normalizedOrigin)) callback(null, true); else callback(new Error("CORS origin not allowed")); } }));
 app.use(express.json({ limit: "512kb" }));
 
 function userIdFromRequest(request: Request) {
@@ -36,6 +38,9 @@ const walletInput = z.object({ chain: z.enum(["ethereum", "solana"]), address: z
 
 app.get("/health", (_request, response) => response.json({ ok: true, service: "avhisafe-backend", database: "mongodb", timestamp: new Date().toISOString() }));
 app.get("/ready", async (_request, response) => { try { await pingDatabase(); return response.json({ ok: true, database: "available" }); } catch (error) { return errorResponse(response, error, "MongoDB unavailable.", 503); } });
+
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/wallets", walletRoutes);
 
 app.get("/api/v1/dashboards", async (request, response) => { try { return response.json({ dashboards: await listUserDashboards(userIdFromRequest(request)) }); } catch (error) { return errorResponse(response, error, "Unable to list dashboards.", 401); } });
 app.post("/api/v1/dashboards", async (request, response) => { try { const userId = userIdFromRequest(request); const input = dashboardInput.parse(request.body); const now = new Date(); const dashboard: DashboardDocument = { _id: randomUUID(), userId, ...input, widgets: input.widgets.length ? input.widgets : defaultWidgets(), createdAt: now, updatedAt: now }; const dashboards = await collections.dashboards(); if (dashboard.isDefault) await dashboards.updateMany({ userId }, { $set: { isDefault: false, updatedAt: now } }); await dashboards.insertOne(dashboard); await revisionFor(dashboard, userId, "system", "Created dashboard", undefined, now); const uiDocument = await ensureUIDocument(userId, dashboard._id); return response.status(201).json({ dashboard, uiDocument }); } catch (error) { return errorResponse(response, error, "Invalid dashboard."); } });
@@ -60,10 +65,6 @@ app.put("/api/v1/permissions/:featureKey", async (request, response) => { try { 
 app.get("/api/v1/addresses", async (request, response) => { try { return response.json({ addresses: await listUserPublicAddresses(userIdFromRequest(request)) }); } catch (error) { return errorResponse(response, error, "Unable to list addresses.", 401); } });
 app.post("/api/v1/addresses", async (request, response) => { try { const userId = userIdFromRequest(request); const input = addressInput.parse(request.body); const now = new Date(); const address = { _id: randomUUID(), userId, ...input, createdAt: now, updatedAt: now }; await (await collections.addresses()).replaceOne({ userId, chain: input.chain, address: input.address }, address, { upsert: true }); return response.status(201).json({ address }); } catch (error) { return errorResponse(response, error, "Invalid address."); } });
 app.delete("/api/v1/addresses/:addressId", async (request, response) => { try { await (await collections.addresses()).deleteOne({ _id: request.params.addressId, userId: userIdFromRequest(request) }); return response.status(204).send(); } catch (error) { return errorResponse(response, error, "Unable to delete address.", 401); } });
-
-app.get("/api/v1/wallets", async (request, response) => { try { return response.json({ wallets: await listUserWallets(userIdFromRequest(request)) }); } catch (error) { return errorResponse(response, error, "Unable to list wallets.", 401); } });
-app.put("/api/v1/wallets/:walletId", async (request, response) => { try { const userId = userIdFromRequest(request); const input = walletInput.parse(request.body); const now = new Date(); const wallet = { _id: request.params.walletId, userId, ...input, lastSeenAt: now, createdAt: now, updatedAt: now }; await (await collections.wallets()).replaceOne({ _id: wallet._id, userId }, wallet, { upsert: true }); return response.json({ wallet }); } catch (error) { return errorResponse(response, error, "Invalid wallet."); } });
-app.delete("/api/v1/wallets/:walletId", async (request, response) => { try { await (await collections.wallets()).deleteOne({ _id: request.params.walletId, userId: userIdFromRequest(request) }); return response.status(204).send(); } catch (error) { return errorResponse(response, error, "Unable to delete wallet.", 401); } });
 
 app.use((error: unknown, _request: Request, response: Response, _next: unknown) => response.status(500).json({ error: error instanceof Error ? error.message : "Unexpected server error." }));
 app.listen(port, () => console.log(`AvhiSafe MongoDB backend listening on http://localhost:${port}`));

@@ -9,6 +9,14 @@ Copy `.env.example` to `.env` and configure a MongoDB connection:
 ```env
 MONGODB_URI=mongodb://127.0.0.1:27017
 MONGODB_DB=avhisafe
+
+# Wallet-signature authentication
+AUTH_DOMAIN=avhisafe.netlify.app
+AUTH_URI=https://avhisafe.netlify.app
+# Set COOKIE_SECURE=false only for local HTTP development.
+COOKIE_SECURE=true
+# Use None for the deployed Netlify-to-Render cross-site API; defaults to None when secure.
+COOKIE_SAME_SITE=None
 ```
 
 MongoDB Atlas connection strings are also supported. Do not commit `.env` files.
@@ -52,10 +60,13 @@ Every user-owned document contains a `userId`. Dashboard reads and writes must a
 | Collection | Purpose |
 |---|---|
 | `users` | Account identity and role |
+| `auth_nonces` | Short-lived, single-use wallet sign-in challenges |
+| `sessions` | Hashed browser sessions with expiry and revocation state |
 | `dashboards` | Personal dashboard name, theme, currency, filters, and widget layout |
 | `dashboard_revisions` | Manual and AI-generated dashboard snapshots for undo/history |
 | `ai_requests` | User prompts, AI plan status, and structured responses |
 | `feature_permissions` | Per-user feature enablement and configuration |
+| `wallets` | Authenticated connected and watch-only wallet records |
 | `connected_wallets` | Public MetaMask/EVM and Solana wallet metadata |
 | `public_addresses` | Watch-only and generated public addresses |
 | `portfolio_snapshots` | Historical read-only portfolio values |
@@ -79,7 +90,26 @@ Every user-owned document contains a `userId`. Dashboard reads and writes must a
 | `POST /api/v1/ai/plan` | Send a natural-language request to the server-side model and return a complete validated UI document preview |
 | `POST /api/v1/ai/apply` | Persist an approved generated UI document for only that user and dashboard |
 
-The current development authentication boundary uses `x-user-id` only to exercise ownership-aware routes. It is not production authentication. Before deployment, replace it with real session or OAuth middleware and derive the user ID server-side rather than trusting a client-provided header.
+## Authentication and wallet routes
+
+Authentication uses a short-lived, single-use wallet signature challenge. The server stores only the nonce metadata, verified public wallet identity, and a hash of the session token; it never receives or stores a private key or seed phrase.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/auth/nonce` | Issue an EVM or Solana sign-in challenge |
+| `POST /api/v1/auth/verify` | Verify the signature and create an HttpOnly session cookie |
+| `GET /api/v1/auth/me` | Return the authenticated user and session metadata |
+| `POST /api/v1/auth/logout` | Revoke the current session and clear the cookie |
+| `POST /api/v1/auth/sessions/:sessionId/revoke` | Revoke one session owned by the current user |
+| `GET /api/v1/wallets` | List wallets owned by the authenticated user |
+| `POST /api/v1/wallets/watch-only` | Add a validated public address without wallet-provider access |
+| `POST /api/v1/wallets/connected` | Save a connected-wallet public address and provider metadata |
+| `PATCH /api/v1/wallets/:walletId` | Rename, hide, archive, disconnect, or update networks |
+| `DELETE /api/v1/wallets/:walletId` | Soft-remove a wallet from the account |
+
+For local development, use `AUTH_DOMAIN=localhost:3000`, `AUTH_URI=http://localhost:3000`, and `COOKIE_SECURE=false` (which defaults `COOKIE_SAME_SITE` to `Lax`). The deployed Netlify-to-Render setup requires HTTPS, `COOKIE_SECURE=true`, `COOKIE_SAME_SITE=None`, and credentialed browser requests so the HttpOnly session cookie is included.
+
+The new authentication and wallet routes use server-verified wallet signatures and HttpOnly sessions. The older dashboard, AI, address, and permission routes still accept `x-user-id` as a development compatibility boundary; migrate those routes to the `authenticate` middleware before production deployment and derive every user ID from the verified session rather than trusting a client-provided header.
 
 The AI UI endpoint sends the prompt to a server-side model. The model returns a complete declarative UI document; the backend validates it with a strict Zod schema, previews it, and persists it only after explicit user approval. There is no keyword planner or client-side AI fallback. If the provider is unavailable, the UI reports the failure instead of pretending that an AI change happened. For the current Google provider configuration, set `AI_MODEL=gemini-3.6-flash`; older `gemini-2.5-flash` configurations are unavailable to new users.
 

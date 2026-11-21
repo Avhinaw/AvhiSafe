@@ -62,7 +62,7 @@ export async function connectEvmWallet(): Promise<ConnectedWallet> {
   if (!accounts?.[0]) throw new Error("The wallet did not return an account.");
   const chainId = await provider.request({ method: "eth_chainId" }) as string;
   const connected: ConnectedWallet = { id: `ethereum-${accounts[0].toLowerCase()}`, chain: "ethereum", address: accounts[0], provider: "EVM browser wallet", label: "Connected EVM wallet", chainId, connectedAt: Date.now() };
-  saveConnectedWallets([...readConnectedWallets().filter((item) => item.id !== connected.id && item.chain !== "ethereum"), connected]);
+  saveConnectedWallets([...readConnectedWallets().filter((item) => item.id !== connected.id), connected]);
   return connected;
 }
 
@@ -73,7 +73,7 @@ export async function connectSolanaWallet(): Promise<ConnectedWallet> {
   const address = result.publicKey?.toString() || provider.publicKey?.toString();
   if (!address) throw new Error("The Solana wallet did not return a public key.");
   const connected: ConnectedWallet = { id: `solana-${address}`, chain: "solana", address, provider: "Solana browser wallet", label: "Connected Solana wallet", connectedAt: Date.now() };
-  saveConnectedWallets([...readConnectedWallets().filter((item) => item.id !== connected.id && item.chain !== "solana"), connected]);
+  saveConnectedWallets([...readConnectedWallets().filter((item) => item.id !== connected.id), connected]);
   return connected;
 }
 

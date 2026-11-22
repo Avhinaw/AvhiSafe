@@ -52,7 +52,7 @@ export async function ensureDefaultDashboard(userId: string): Promise<DashboardD
   const now = new Date();
   const dashboard: DashboardDocument = {
     _id: randomUUID(), userId, slug: "main", name: "My AvhiSafe dashboard", theme: "system", currency: "USD", density: "comfortable", isDefault: true,
-    widgets: defaultWidgets(), filters: {}, createdAt: now, updatedAt: now,
+    widgets: defaultWidgets(), filters: {}, version: 1, createdAt: now, updatedAt: now,
   };
   const dashboards = await collections.dashboards();
   await dashboards.updateOne({ userId, isDefault: true }, { $setOnInsert: dashboard }, { upsert: true });

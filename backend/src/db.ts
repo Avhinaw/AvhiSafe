@@ -2,7 +2,7 @@ import { MongoClient, type Db } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { defaultWidgets } from "./widgetCatalog.js";
 import { defaultUiSpec, sanitizeUiSpec } from "./uiSchema.js";
-import type { AIRequestDocument, AuthNonceDocument, ConnectedWalletDocument, DashboardDocument, DashboardRevisionDocument, EncryptedVaultDocument, FeaturePermissionDocument, PortfolioSnapshotDocument, PublicAddressDocument, SessionDocument, UIDocument, UIRevisionDocument, UserDocument, WalletDocument } from "./models/index.js";
+import type { AIRequestDocument, AuditLogDocument, AuthNonceDocument, ConnectedWalletDocument, DashboardDocument, DashboardRevisionDocument, EncryptedVaultDocument, FeaturePermissionDocument, PortfolioSnapshotDocument, PublicAddressDocument, SecurityAlertDocument, SecurityCheckDocument, SecurityScanDocument, SessionDocument, UIDocument, UIRevisionDocument, UserDocument, WalletDocument } from "./models/index.js";
 
 let client: MongoClient | undefined;
 let database: Db | undefined;
@@ -31,6 +31,10 @@ export const collections = {
   encryptedVaults: async () => (await getDb()).collection<EncryptedVaultDocument>("encrypted_vaults"),
   addresses: async () => (await getDb()).collection<PublicAddressDocument>("public_addresses"),
   snapshots: async () => (await getDb()).collection<PortfolioSnapshotDocument>("portfolio_snapshots"),
+  securityScans: async () => (await getDb()).collection<SecurityScanDocument>("security_scans"),
+  securityChecks: async () => (await getDb()).collection<SecurityCheckDocument>("security_checks"),
+  securityAlerts: async () => (await getDb()).collection<SecurityAlertDocument>("security_alerts"),
+  auditLogs: async () => (await getDb()).collection<AuditLogDocument>("audit_logs"),
   uiDocuments: async () => (await getDb()).collection<UIDocument>("ai_ui_documents"),
   uiRevisions: async () => (await getDb()).collection<UIRevisionDocument>("ai_ui_revisions"),
 };

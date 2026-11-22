@@ -10,11 +10,13 @@ import {
   PortfolioSnapshot,
   getStoredWatchAddresses,
   loadPortfolio,
+  loadPortfolioHistory,
   saveWatchAddresses,
 } from "@/lib/portfolio";
 import { readPublicIndex } from "@/lib/vault";
 import { readConnectedWallets } from "@/lib/connectedWallet";
 import { listServerWallets } from "@/lib/walletApi";
+import { useAuth } from "./AuthProvider";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
@@ -82,6 +84,7 @@ interface PortfolioDashboardProps {
 }
 
 export default function PortfolioDashboard({ embedded = false }: PortfolioDashboardProps) {
+  const { user } = useAuth();
   const [addresses, setAddresses] = useState<PortfolioAddress[]>([]);
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [loading, setLoading] = useState(false);
@@ -130,12 +133,13 @@ export default function PortfolioDashboard({ embedded = false }: PortfolioDashbo
 
   useEffect(() => {
     try { setHistory(JSON.parse(localStorage.getItem("portfolioHistory") || "[]")); } catch { setHistory([]); }
+    if (user) void loadPortfolioHistory().then((points) => setHistory(points.map(({ timestamp, value }) => ({ timestamp, value })))).catch(() => undefined);
     syncAddresses();
     const handler = () => syncAddresses();
     window.addEventListener("avhisafe:wallets-updated", handler);
     window.addEventListener("avhisafe:connected-wallets-updated", handler);
     return () => { window.removeEventListener("avhisafe:wallets-updated", handler); window.removeEventListener("avhisafe:connected-wallets-updated", handler); };
-  }, [syncAddresses]);
+  }, [syncAddresses, user]);
 
   useEffect(() => {
     if (addresses.length) refresh();

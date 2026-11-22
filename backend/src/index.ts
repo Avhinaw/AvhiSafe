@@ -17,7 +17,7 @@ import { portfolioRoutes } from "./routes/portfolioRoutes.js";
 import { vaultRoutes } from "./routes/vaultRoutes.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { authenticatedUserId, trustedOriginMiddleware } from "./middleware/requestSecurity.js";
-import { securityHeaders } from "./middleware/security.js";
+import { rateLimit, securityHeaders } from "./middleware/security.js";
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -49,6 +49,7 @@ app.get("/api/v1/ai/status", (_request, response) => { const configured = Boolea
 
 app.use("/api/v1", authenticate);
 app.use("/api/v1", trustedOriginMiddleware(allowedOrigins));
+app.use("/api/v1/ai", rateLimit({ windowMs: 60_000, max: 12, message: "Too many AI dashboard requests. Please try again shortly." }));
 app.use("/api/v1/portfolio", portfolioRoutes);
 app.get("/api/v1/admin/dashboard-analytics", requireRole("admin"), async (_request, response) => { try { const [users, dashboards, wallets] = await Promise.all([collections.users(), collections.dashboards(), collections.wallets()]); return response.json({ role: "admin", totals: { users: await users.countDocuments({ status: "active" }), dashboards: await dashboards.countDocuments(), wallets: await wallets.countDocuments({ status: { $ne: "removed" } }) } }); } catch (error) { return errorResponse(response, error, "Unable to load admin analytics.", 500); } });
 

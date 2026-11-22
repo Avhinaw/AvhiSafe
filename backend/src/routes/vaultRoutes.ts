@@ -3,11 +3,13 @@ import { Router } from "express";
 import { z } from "zod";
 import { collections } from "../db.js";
 import { authenticate } from "../middleware/authenticate.js";
+import { rateLimit } from "../middleware/security.js";
 import type { EncryptedVaultDocument } from "../models/index.js";
 
 const vaultInput = z.object({ version: z.literal(1), salt: z.string().min(16).max(256), iv: z.string().min(8).max(128), ciphertext: z.string().min(1).max(2_000_000) }).strict();
 export const vaultRoutes = Router();
 vaultRoutes.use(authenticate);
+vaultRoutes.use(rateLimit({ windowMs: 60_000, max: 20, message: "Too many vault sync requests. Please try again shortly." }));
 
 vaultRoutes.get("/", async (request, response) => {
   const userId = request.auth?.userId;

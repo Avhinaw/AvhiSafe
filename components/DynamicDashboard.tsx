@@ -62,7 +62,7 @@ function InsightWidget({ widgetType }: { widgetType: string }) {
 }
 
 function RegisteredWidget({ widgetType }: { widgetType: string }) {
-  if (widgetType === "connected-wallets") return <ConnectedWallets />;
+  if (widgetType === "connected-wallets") return <ConnectedWallets displayOnly />;
   if (widgetType === "portfolio-value") return <PortfolioDashboard />;
   if (widgetType === "security-score") return <SecurityCenter />;
   return <InsightWidget widgetType={widgetType} />;

@@ -5,6 +5,7 @@ import React from "react";
 import { ModeToggle } from "./ui/theme-button";
 import { Button } from "./ui/button";
 import { useAuth } from "./AuthProvider";
+import WatchOnlyDialog from "./WatchOnlyDialog";
 
 function shortAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
@@ -27,6 +28,7 @@ const Navbar = () => {
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <WatchOnlyDialog />
         {loading ? <Loader2 className="size-4 animate-spin text-primary/50" /> : user ? (
           <div className="flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-xs">
             <ShieldCheck className="size-4 text-emerald-600" />

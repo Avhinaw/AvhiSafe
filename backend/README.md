@@ -70,6 +70,10 @@ Every user-owned document contains a `userId`. Dashboard reads and writes must a
 | `connected_wallets` | Public MetaMask/EVM and Solana wallet metadata |
 | `public_addresses` | Watch-only and generated public addresses |
 | `portfolio_snapshots` | Historical read-only portfolio values |
+| `security_scans` | Deterministic scan executions and statuses |
+| `security_checks` | Evidence and results for each scan check |
+| `security_alerts` | User-owned evidence-backed alert records |
+| `audit_logs` | Security-sensitive lifecycle events |
 | `ai_ui_documents` | Complete validated AI-generated UI document per user and dashboard |
 | `ai_ui_revisions` | Versioned AI UI documents for per-user undo/history |
 
@@ -89,6 +93,11 @@ Every user-owned document contains a `userId`. Dashboard reads and writes must a
 | `GET /api/v1/ai/status` | Report whether the server-side AI provider is configured without exposing credentials |
 | `POST /api/v1/ai/plan` | Send a natural-language request to the server-side model and return a complete validated UI document preview |
 | `POST /api/v1/ai/apply` | Persist an approved generated UI document for only that user and dashboard |
+| `POST /api/v1/portfolio` | Refresh active user-owned wallets and persist normalized snapshot records |
+| `GET /api/v1/portfolio/history` | Read the authenticated user’s persisted portfolio history |
+| `GET /api/v1/security/alerts` | List the authenticated user’s security alerts |
+| `GET /api/v1/security/scans` | List recent deterministic security scans |
+| `POST /api/v1/security/scan` | Run a baseline policy-boundary scan with evidence metadata |
 
 ## Authentication and wallet routes
 
@@ -106,6 +115,8 @@ Authentication uses a short-lived, single-use wallet signature challenge. The se
 | `POST /api/v1/wallets/connected` | Save a connected-wallet public address and provider metadata |
 | `PATCH /api/v1/wallets/:walletId` | Rename, hide, archive, disconnect, or update networks |
 | `DELETE /api/v1/wallets/:walletId` | Soft-remove a wallet from the account |
+| `GET /api/v1/auth/export` | Download user-owned account data without session secrets |
+| `DELETE /api/v1/auth/account` | Permanently delete account data after `{ "confirmation": "DELETE" }` |
 
 For local development, use `AUTH_DOMAIN=localhost:3000`, `AUTH_URI=http://localhost:3000`, and `COOKIE_SECURE=false` (which defaults `COOKIE_SAME_SITE` to `Lax`). The deployed Netlify-to-Render setup requires HTTPS, `COOKIE_SECURE=true`, `COOKIE_SAME_SITE=None`, and credentialed browser requests so the HttpOnly session cookie is included.
 

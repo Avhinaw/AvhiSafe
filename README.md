@@ -12,8 +12,11 @@ AvhiSafe does **not** execute transactions, custody funds, or send private keys 
 - EVM and Solana address validation with duplicate-prevention indexes.
 - Local AES-GCM encrypted wallet vault with encrypted account backup synchronization.
 - Portfolio reads through backend provider adapters with explicit source, timestamp, and error metadata.
+- Persisted portfolio snapshots and authenticated historical portfolio data.
 - Native balances, token holdings, recent transaction activity, explorer links, QR display, and a local refresh trend chart.
 - Multiple dashboards, validated widget configuration, revisions, undo, and AI-generated UI plans.
+- Deterministic baseline security scans with evidence-aware results and alert APIs.
+- Account data export and authenticated account deletion with session revocation.
 - Strict request schemas, security headers, trusted-origin checks, authentication boundaries, ownership checks, and route-level rate limits.
 
 ## Repository structure
@@ -140,6 +143,13 @@ Authenticated endpoints include:
 - `PATCH|DELETE /api/v1/wallets/:walletId`
 - `GET|PUT /api/v1/vault`
 - `POST /api/v1/portfolio`
+- `GET /api/v1/portfolio/history`
+- `GET /api/v1/security/alerts`
+- `GET /api/v1/security/scans`
+- `POST /api/v1/security/scan`
+- `PATCH /api/v1/security/alerts/:alertId`
+- `GET /api/v1/auth/export`
+- `DELETE /api/v1/auth/account` with `{ "confirmation": "DELETE" }`
 - Dashboard CRUD, revisions, UI revisions, undo, permissions, and AI plan/apply endpoints.
 
 Portfolio requests are authorized against active wallet records owned by the signed-in account. Client-provided addresses are not sufficient authorization.
@@ -157,7 +167,7 @@ Portfolio requests are authorized against active wallet records owned by the sig
 - Encrypted vault ciphertext is synchronized; the vault password and plaintext wallet secrets remain client-side.
 - Generated wallet signing is not enabled; AvhiSafe is read-only.
 
-The current portfolio implementation performs provider reads on demand. Durable historical snapshots, background refresh queues, provider failover, security scans, audit-event persistence, account export/deletion workflows, and full observability remain planned production-hardening work.
+Portfolio snapshots are persisted when a user refreshes the portfolio and can be read through the authenticated history endpoint. Background refresh queues, provider failover, broad contract/approval intelligence, durable audit-event coverage, and full observability remain production-hardening work. The current baseline security scan deliberately reports only policy-boundary evidence and does not claim that a wallet or contract is safe.
 
 ## Contribution notes
 

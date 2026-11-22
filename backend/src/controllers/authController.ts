@@ -199,3 +199,51 @@ export async function revokeSession(request: Request, response: Response) {
   const updated = await (await collections.sessions()).updateOne({ _id: request.params.sessionId, userId: request.auth.userId, status: "active" }, { $set: { status: "revoked", revokedAt: new Date(), revokeReason: "user_requested" } });
   return updated.matchedCount ? response.status(204).send() : response.status(404).json({ error: "Session not found." });
 }
+
+export async function exportAccount(request: Request, response: Response) {
+  if (!request.auth) return response.status(401).json({ error: "Authentication required." });
+  const userId = request.auth.userId;
+  const [user, wallets, dashboards, revisions, aiRequests, permissions, snapshots, scans, alerts, vault] = await Promise.all([
+    (await collections.users()).findOne({ _id: userId }),
+    (await collections.wallets()).find({ userId }).toArray(),
+    (await collections.dashboards()).find({ userId }).toArray(),
+    (await collections.revisions()).find({ userId }).toArray(),
+    (await collections.aiRequests()).find({ userId }).toArray(),
+    (await collections.permissions()).find({ userId }).toArray(),
+    (await collections.snapshots()).find({ userId }).toArray(),
+    (await collections.securityScans()).find({ userId }).toArray(),
+    (await collections.securityAlerts()).find({ userId }).toArray(),
+    (await collections.encryptedVaults()).findOne({ userId }, { projection: { ciphertext: 0 } }),
+  ]);
+  response.setHeader("Content-Disposition", `attachment; filename=avhisafe-account-${userId}.json`);
+  return response.json({ exportedAt: new Date().toISOString(), user, wallets, dashboards, revisions, aiRequests, permissions, snapshots, scans, alerts, encryptedVault: vault ? { version: vault.version, salt: vault.salt, iv: vault.iv, updatedAt: vault.updatedAt } : null });
+}
+
+export async function deleteAccount(request: Request, response: Response) {
+  try {
+    if (!request.auth) return response.status(401).json({ error: "Authentication required." });
+    z.object({ confirmation: z.literal("DELETE") }).strict().parse(request.body);
+    const userId = request.auth.userId;
+    await (await collections.auditLogs()).insertOne({ _id: randomUUID(), userId, actorType: "user", actorId: userId, action: "account.deleted", resourceType: "user", resourceId: userId, result: "success", createdAt: new Date() });
+    await (await collections.sessions()).updateMany({ userId }, { $set: { status: "revoked", revokedAt: new Date(), revokeReason: "account_deleted" } });
+    await Promise.all([
+      (await collections.wallets()).deleteMany({ userId }),
+      (await collections.connectedWallets()).deleteMany({ userId }),
+      (await collections.addresses()).deleteMany({ userId }),
+      (await collections.dashboards()).deleteMany({ userId }),
+      (await collections.revisions()).deleteMany({ userId }),
+      (await collections.aiRequests()).deleteMany({ userId }),
+      (await collections.permissions()).deleteMany({ userId }),
+      (await collections.encryptedVaults()).deleteMany({ userId }),
+      (await collections.snapshots()).deleteMany({ userId }),
+      (await collections.securityScans()).deleteMany({ userId }),
+      (await collections.securityChecks()).deleteMany({ userId }),
+      (await collections.securityAlerts()).deleteMany({ userId }),
+      (await collections.uiDocuments()).deleteMany({ userId }),
+      (await collections.uiRevisions()).deleteMany({ userId }),
+    ]);
+    await (await collections.users()).updateOne({ _id: userId }, { $set: { status: "deleted", deletedAt: new Date(), updatedAt: new Date() } });
+    clearSessionCookie(response);
+    return response.status(204).send();
+  } catch (error) { return errorResponse(response, error, "Unable to delete account."); }
+}

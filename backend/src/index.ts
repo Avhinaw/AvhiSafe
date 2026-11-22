@@ -15,6 +15,7 @@ import { authRoutes } from "./routes/authRoutes.js";
 import { walletRoutes } from "./routes/walletRoutes.js";
 import { portfolioRoutes } from "./routes/portfolioRoutes.js";
 import { vaultRoutes } from "./routes/vaultRoutes.js";
+import { securityRoutes } from "./routes/securityRoutes.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { authenticatedUserId, trustedOriginMiddleware } from "./middleware/requestSecurity.js";
 import { rateLimit, securityHeaders } from "./middleware/security.js";
@@ -51,6 +52,7 @@ app.use("/api/v1", authenticate);
 app.use("/api/v1", trustedOriginMiddleware(allowedOrigins));
 app.use("/api/v1/ai", rateLimit({ windowMs: 60_000, max: 12, message: "Too many AI dashboard requests. Please try again shortly." }));
 app.use("/api/v1/portfolio", portfolioRoutes);
+app.use("/api/v1/security", securityRoutes);
 app.get("/api/v1/admin/dashboard-analytics", requireRole("admin"), async (_request, response) => { try { const [users, dashboards, wallets] = await Promise.all([collections.users(), collections.dashboards(), collections.wallets()]); return response.json({ role: "admin", totals: { users: await users.countDocuments({ status: "active" }), dashboards: await dashboards.countDocuments(), wallets: await wallets.countDocuments({ status: { $ne: "removed" } }) } }); } catch (error) { return errorResponse(response, error, "Unable to load admin analytics.", 500); } });
 
 app.get("/api/v1/dashboards", async (request, response) => { try { return response.json({ dashboards: await listUserDashboards(authenticatedUserId(request)) }); } catch (error) { return errorResponse(response, error, "Unable to list dashboards.", 401); } });

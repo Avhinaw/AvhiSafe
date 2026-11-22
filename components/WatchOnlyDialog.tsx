@@ -28,6 +28,7 @@ export default function WatchOnlyDialog() {
     setSaving(true);
     try {
       await saveWatchOnlyWallet({ chainFamily: chain, address: trimmed, supportedNetworks: chain === "ethereum" ? ["1"] : ["mainnet-beta"], label: label.trim() || undefined });
+      window.dispatchEvent(new Event("avhisafe:connected-wallets-updated"));
       setAddress("");
       setLabel("");
       setOpen(false);

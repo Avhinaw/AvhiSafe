@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { ExternalLink, Copy, Plus, QrCode, RefreshCw, Trash2, WalletCards } from "lucide-react";
+import { ExternalLink, Copy, QrCode, RefreshCw, Trash2, WalletCards } from "lucide-react";
 import { toast } from "sonner";
 import {
   Chain,
@@ -11,7 +11,6 @@ import {
   getStoredWatchAddresses,
   loadPortfolio,
   saveWatchAddresses,
-  validateAddress,
 } from "@/lib/portfolio";
 import { readPublicIndex } from "@/lib/vault";
 import { readConnectedWallets } from "@/lib/connectedWallet";
@@ -41,30 +40,36 @@ function inferChain(path: string | undefined): Chain {
 // Renders points as a smooth sparkline instead of independent bars, so a viewer
 // reads it as one trend rather than N separate measurements.
 function Sparkline({ points }: { points: Array<{ timestamp: number; value: number }> }) {
-  if (points.length < 2) return null;
-  const width = 200;
-  const height = 48;
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  if (points.length < 2) return <div className="flex h-28 items-center justify-center rounded-2xl border border-dashed border-primary/15 bg-primary/[0.02] text-xs font-semibold text-primary/40">Collecting trend data…</div>;
+  const width = 640;
+  const height = 180;
   const values = points.map((point) => point.value);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
   const coords = points.map((point, index) => {
-    const x = (index / (points.length - 1)) * width;
-    const y = height - ((point.value - min) / range) * height;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
+    const x = 12 + (index / (points.length - 1)) * (width - 24);
+    const y = 18 + (1 - (point.value - min) / range) * (height - 42);
+    return { x, y };
   });
   const trendUp = values[values.length - 1] >= values[0];
+  const stroke = trendUp ? "rgb(45 212 191)" : "rgb(251 113 133)";
+  const line = coords.map(({ x, y }) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const area = `12,${height - 18} ${line} ${width - 12},${height - 18}`;
+  const active = activeIndex === null ? null : points[activeIndex];
+  const activePoint = activeIndex === null ? null : coords[activeIndex];
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-12 w-full" preserveAspectRatio="none">
-      <polyline
-        points={coords.join(" ")}
-        fill="none"
-        stroke={trendUp ? "rgb(16 185 129)" : "rgb(244 63 94)"}
-        strokeWidth={2}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
+    <div className="relative h-40 w-full overflow-hidden rounded-2xl border border-primary/10 bg-primary/[0.025] p-2">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full" role="img" aria-label="Portfolio value trend chart">
+        {[45, 90, 135].map((y) => <line key={y} x1="12" x2={width - 12} y1={y} y2={y} stroke="currentColor" strokeOpacity="0.08" strokeDasharray="4 6" />)}
+        <polygon points={area} fill={stroke} fillOpacity="0.1" />
+        <polyline points={line} fill="none" stroke={stroke} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+        {coords.map((point, index) => <circle key={points[index].timestamp} cx={point.x} cy={point.y} r={activeIndex === index ? 6 : 3.5} fill="hsl(var(--background))" stroke={stroke} strokeWidth="2" onMouseEnter={() => setActiveIndex(index)} onFocus={() => setActiveIndex(index)} tabIndex={0} role="button" aria-label={`${formatUsd(points[index].value)} on ${new Date(points[index].timestamp).toLocaleString()}`} />)}
+        {activePoint && active && <g pointerEvents="none"><line x1={activePoint.x} x2={activePoint.x} y1="14" y2={height - 18} stroke={stroke} strokeDasharray="3 4" strokeOpacity="0.65" /><rect x={Math.min(Math.max(activePoint.x - 62, 8), width - 132)} y="8" width="124" height="38" rx="9" fill="hsl(var(--foreground))" /><text x={Math.min(Math.max(activePoint.x, 70), width - 70)} y="24" textAnchor="middle" fill="hsl(var(--background))" fontSize="14" fontWeight="700">{formatUsd(active.value)}</text><text x={Math.min(Math.max(activePoint.x, 70), width - 70)} y="37" textAnchor="middle" fill="hsl(var(--background))" fillOpacity="0.65" fontSize="9">{new Date(active.timestamp).toLocaleDateString()}</text></g>}
+      </svg>
+      <div className="pointer-events-none absolute bottom-2 left-4 right-4 flex justify-between text-[10px] font-semibold text-primary/35"><span>{new Date(points[0].timestamp).toLocaleDateString()}</span><span>Hover points for details</span><span>{new Date(points[points.length - 1].timestamp).toLocaleDateString()}</span></div>
+    </div>
   );
 }
 
@@ -80,9 +85,6 @@ export default function PortfolioDashboard({ embedded = false }: PortfolioDashbo
   const [addresses, setAddresses] = useState<PortfolioAddress[]>([]);
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [loading, setLoading] = useState(false);
-  const [watchAddress, setWatchAddress] = useState("");
-  const [watchLabel, setWatchLabel] = useState("");
-  const [watchChain, setWatchChain] = useState<Chain>("ethereum");
   const [selectedQr, setSelectedQr] = useState<PortfolioAddress | null>(null);
   const [tokenQuery, setTokenQuery] = useState("");
   const [history, setHistory] = useState<Array<{ timestamp: number; value: number }>>([]);
@@ -148,27 +150,6 @@ export default function PortfolioDashboard({ embedded = false }: PortfolioDashbo
     if (!first) return null;
     return ((totalUsd - first) / first) * 100;
   }, [history, totalUsd]);
-
-  const addWatchAddress = () => {
-    const address = watchAddress.trim();
-    if (!validateAddress(address, watchChain)) {
-      toast.error(`Enter a valid ${chainNames[watchChain]} address.`);
-      return;
-    }
-    const watch: PortfolioAddress = {
-      id: `watch-${watchChain}-${address}`,
-      label: watchLabel.trim() || `Watched ${chainNames[watchChain]} address`,
-      address,
-      chain: watchChain,
-      source: "watch",
-    };
-    const next = [...getStoredWatchAddresses().filter((item) => item.id !== watch.id), watch];
-    saveWatchAddresses(next);
-    setWatchAddress("");
-    setWatchLabel("");
-    syncAddresses();
-    toast.success("Watch-only address added.");
-  };
 
   const removeWatchAddress = (address: PortfolioAddress) => {
     saveWatchAddresses(getStoredWatchAddresses().filter((item) => item.id !== address.id));
@@ -323,25 +304,6 @@ export default function PortfolioDashboard({ embedded = false }: PortfolioDashbo
           </div>
         </>
       )}
-
-      <div className="mt-6 rounded-2xl border border-primary/10 p-4 sm:p-6">
-        <div className="flex items-start gap-3">
-          <Plus className="size-5" />
-          <div>
-            <h3 className="text-lg font-bold">Add a watch-only address</h3>
-            <p className="text-sm text-primary/60">Track a public address without importing its recovery phrase or private key.</p>
-          </div>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto]">
-          <Input value={watchLabel} onChange={(event) => setWatchLabel(event.target.value)} placeholder="Label (optional)" />
-          <Input value={watchAddress} onChange={(event) => setWatchAddress(event.target.value)} placeholder="Public address" />
-          <select value={watchChain} onChange={(event) => setWatchChain(event.target.value as Chain)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
-            <option value="ethereum">Ethereum</option>
-            <option value="solana">Solana</option>
-          </select>
-          <Button onClick={addWatchAddress}>Add address</Button>
-        </div>
-      </div>
 
       {selectedQr && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setSelectedQr(null)}>

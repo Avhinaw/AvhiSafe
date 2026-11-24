@@ -1,10 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
-import { randomUUID } from "node:crypto";
 import { collections } from "../db.js";
+import { rateLimit } from "../middleware/security.js";
+import type { AssetDocument, AssetPriceDocument, PortfolioSnapshotDocument, TokenBalanceDocument, TransactionDocument, WalletSyncDocument, TransactionSyncDocument } from "../models/index.js";
 import { loadPortfolioAddress } from "../portfolioService.js";
 import { normalizeWalletAddress } from "../walletValidation.js";
-import type { AssetDocument, AssetPriceDocument, PortfolioSnapshotDocument, TokenBalanceDocument, TransactionDocument, WalletSyncDocument, TransactionSyncDocument } from "../models/index.js";
 
 const portfolioAddress = z.object({
   id: z.string().min(1).max(120),
@@ -17,15 +18,25 @@ const portfolioAddress = z.object({
 const portfolioInput = z.object({ addresses: z.array(portfolioAddress).min(1).max(50) }).strict();
 
 export const portfolioRoutes = Router();
+portfolioRoutes.use(rateLimit({ windowMs: 60_000, max: 30, message: "Too many portfolio refreshes. Please try again shortly." }));
 
 portfolioRoutes.post("/", async (request, response) => {
   try {
     const input = portfolioInput.parse(request.body);
-    const snapshots = await Promise.all(input.addresses.map(loadPortfolioAddress));
-    const userId = request.auth?.userId;
-    if (!userId) return response.status(401).json({ error: "Authentication required." });
+    if (!request.auth) return response.status(401).json({ error: "Authentication required." });
+    const requested = input.addresses.map((address) => ({ ...address, normalizedAddress: normalizeWalletAddress(address.chain, address.address) }));
+    const ownedWallets = await (await collections.wallets()).find({
+      userId: request.auth.userId,
+      status: "active",
+      $or: requested.map((address) => ({ chainFamily: address.chain, normalizedAddress: address.normalizedAddress })),
+    }).toArray();
+    const ownedKeys = new Set(ownedWallets.map((wallet) => `${wallet.chainFamily}:${wallet.normalizedAddress}`));
+    const unauthorized = requested.find((address) => !ownedKeys.has(`${address.chain}:${address.normalizedAddress}`));
+    if (unauthorized) return response.status(403).json({ error: "Portfolio requests may only include active wallets owned by the signed-in account." });
+    const snapshots = await Promise.all(requested.map(({ normalizedAddress: _normalizedAddress, ...address }) => loadPortfolioAddress(address)));
+    const walletByKey = new Map(ownedWallets.map((wallet) => [`${wallet.chainFamily}:${wallet.normalizedAddress}`, wallet]));
+    const userId = request.auth.userId;
     const now = new Date();
-    const savedWallets = await (await collections.wallets()).find({ userId, status: { $ne: "removed" } }).toArray();
     const networksCollection = await collections.networks();
     const assetsCollection = await collections.assets();
     const pricesCollection = await collections.assetPrices();
@@ -36,15 +47,8 @@ portfolioRoutes.post("/", async (request, response) => {
     const transactionSyncsCollection = await collections.transactionSyncs();
 
     await Promise.all(snapshots.map(async (snapshot) => {
-      let normalizedAddress: string;
-      try {
-        normalizedAddress = normalizeWalletAddress(snapshot.address.chain, snapshot.address.address);
-      } catch {
-        return;
-      }
-      const wallet = savedWallets.find((item) =>
-        item.chainFamily === snapshot.address.chain && item.normalizedAddress === normalizedAddress,
-      );
+      const normalizedAddress = normalizeWalletAddress(snapshot.address.chain, snapshot.address.address);
+      const wallet = walletByKey.get(`${snapshot.address.chain}:${normalizedAddress}`);
       if (!wallet) return;
 
       const networkKey = snapshot.address.chain === "ethereum" ? "ethereum-mainnet" : "solana-mainnet";
@@ -169,8 +173,62 @@ portfolioRoutes.post("/", async (request, response) => {
         ...(syncStatus === "failed" ? [] : [(await collections.wallets()).updateOne({ _id: wallet._id, userId }, { $set: { lastSyncedAt: now, updatedAt: now } })]),
       ]);
     }));
+    const usableSnapshots = snapshots.filter((snapshot) => snapshot.dataQuality !== "error" && snapshot.dataQuality !== "unavailable");
+    const totalValue = usableSnapshots.reduce((total, snapshot) =>
+      total + (snapshot.nativeValueUsd || 0) + snapshot.tokens.reduce((sum, token) => sum + (token.valueUsd || 0), 0), 0);
+    const aggregateQuality = usableSnapshots.length === 0
+      ? "unavailable"
+      : usableSnapshots.length !== snapshots.length || usableSnapshots.some((snapshot) => snapshot.dataQuality !== "complete")
+        ? "partial"
+        : "complete";
+    const historySnapshot: PortfolioSnapshotDocument = {
+      _id: randomUUID(),
+      userId,
+      walletId: "portfolio",
+      networkId: "portfolio:aggregate",
+      assetId: "portfolio:total",
+      quantity: String(totalValue),
+      price: totalValue,
+      value: totalValue,
+      currency: "USD",
+      source: "portfolio-aggregate",
+      dataQuality: aggregateQuality,
+      observedAt: now,
+      fetchedAt: now,
+    };
+    if (usableSnapshots.length) await (await collections.snapshots()).insertOne(historySnapshot);
     return response.json({ snapshots, fetchedAt: new Date().toISOString(), providerMode: "backend-adapters" });
   } catch (error) {
     return response.status(400).json({ error: error instanceof Error ? error.message : "Invalid portfolio request." });
+  }
+});
+
+portfolioRoutes.get("/history", async (request, response) => {
+  try {
+    if (!request.auth) return response.status(401).json({ error: "Authentication required." });
+    const limit = Math.min(Math.max(Number(request.query.limit) || 100, 1), 500);
+    const snapshots = await (await collections.snapshots()).find({ userId: request.auth.userId, assetId: "portfolio:total" }).sort({ fetchedAt: -1 }).limit(limit * 50).toArray();
+    const grouped = new Map<number, { value: number; source: string; dataQuality: string; walletId?: string }>();
+    for (const snapshot of snapshots) {
+      const timestamp = snapshot.fetchedAt.getTime();
+      const value = snapshot.value ?? Number(snapshot.quantity) ?? 0;
+      const existing = grouped.get(timestamp);
+      if (snapshot.source === "portfolio-aggregate" || !existing) {
+        grouped.set(timestamp, { value, source: snapshot.source, dataQuality: snapshot.dataQuality, walletId: snapshot.walletId === "portfolio" ? undefined : snapshot.walletId });
+      } else if (existing.source !== "portfolio-aggregate") {
+        grouped.set(timestamp, {
+          value: existing.value + value,
+          source: "portfolio-history",
+          dataQuality: existing.dataQuality === "complete" && snapshot.dataQuality === "complete" ? "complete" : "partial",
+        });
+      }
+    }
+    const history = [...grouped.entries()]
+      .sort(([left], [right]) => left - right)
+      .slice(-limit)
+      .map(([timestamp, point]) => ({ timestamp, ...point }));
+    return response.json({ history });
+  } catch (error) {
+    return response.status(500).json({ error: error instanceof Error ? error.message : "Unable to load portfolio history." });
   }
 });

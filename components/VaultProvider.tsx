@@ -43,7 +43,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (user && sessionPassword) void syncRemote(wallets, sessionPassword);
-  }, [user, sessionPassword, syncRemote]);
+  }, [user, sessionPassword, syncRemote, wallets]);
 
   useEffect(() => {
     const exists = hasVault();

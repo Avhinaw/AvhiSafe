@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../middleware/authenticate.js";
-import { currentUser, issueNonce, logout, revokeSession, verifyNonce } from "../controllers/authController.js";
+import { currentUser, deleteAccount, exportAccount, issueNonce, logout, revokeSession, verifyNonce } from "../controllers/authController.js";
 import { rateLimit } from "../middleware/security.js";
 
 export const authRoutes = Router();
@@ -10,3 +10,5 @@ authRoutes.post("/verify", authAttemptLimit, verifyNonce);
 authRoutes.get("/me", authenticate, currentUser);
 authRoutes.post("/logout", authenticate, logout);
 authRoutes.post("/sessions/:sessionId/revoke", authenticate, revokeSession);
+authRoutes.get("/export", authenticate, exportAccount);
+authRoutes.delete("/account", authAttemptLimit, authenticate, deleteAccount);

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Activity, ArrowUpRight, BarChart3, CircleDollarSign, Gauge, LayoutDashboard, RotateCcw, Wand2, Check, AlertTriangle, Loader2, Settings2, ShieldCheck, Sparkles, Wallet, Waves } from "lucide-react";
+import { Activity, ArrowUpRight, BarChart3, CircleDollarSign, Gauge, LayoutDashboard, RotateCcw, Wand2, Check, AlertTriangle, Loader2, Settings2, ShieldCheck, Sparkles, Wallet, Waves, Plus, Trash2, GripVertical, Eye, EyeOff, ChevronUp, ChevronDown, Save } from "lucide-react";
 import { toast } from "sonner";
 import ConnectedWallets from "./ConnectedWallets";
 import PortfolioDashboard from "./PortfolioDashboard";
@@ -47,6 +47,44 @@ const widgetMeta: Record<string, { icon: typeof Activity; eyebrow: string; accen
   "nft-gallery": { icon: Sparkles, eyebrow: "Collectibles", accent: "text-fuchsia-600 dark:text-fuchsia-300", value: "Gallery ready", detail: "NFT holdings and metadata" },
 };
 
+const EDITOR_CATALOG = [
+  { type: "portfolio-value", label: "Portfolio value", width: "large" as const },
+  { type: "balances", label: "Native balances", width: "medium" as const },
+  { type: "token-holdings", label: "Token holdings", width: "large" as const },
+  { type: "transactions", label: "Transactions", width: "large" as const },
+  { type: "portfolio-history", label: "Portfolio history", width: "large" as const },
+  { type: "connected-wallets", label: "Connected wallets", width: "medium" as const },
+  { type: "security-score", label: "Security score", width: "medium" as const },
+  { type: "nft-gallery", label: "NFT gallery", width: "large" as const },
+  { type: "defi-positions", label: "DeFi positions", width: "large" as const },
+  { type: "risk-summary", label: "Risk summary", width: "medium" as const },
+];
+
+const DEFAULT_EDITOR_WIDGETS: DashboardWidget[] = EDITOR_CATALOG.map((item, index) => ({ id: `${item.type}-${index + 1}`, type: item.type, title: item.label, enabled: true, position: index, width: item.width, config: {} }));
+
+function normalizeWidgets(widgets: DashboardWidget[]) {
+  return widgets.map((widget, index) => ({ ...widget, position: index, config: widget.config || {} }));
+}
+
+function DashboardEditor({ widgets, onChange, onReset, saveState }: { widgets: DashboardWidget[]; onChange: (widgets: DashboardWidget[]) => void; onReset: () => void; saveState: "idle" | "saving" | "saved" | "error" }) {
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const update = (id: string, patch: Partial<DashboardWidget>) => onChange(normalizeWidgets(widgets.map((widget) => widget.id === id ? { ...widget, ...patch } : widget)));
+  const move = (index: number, direction: -1 | 1) => { const next = [...widgets]; const target = index + direction; if (target < 0 || target >= next.length) return; [next[index], next[target]] = [next[target], next[index]]; onChange(normalizeWidgets(next)); };
+  const addWidget = (type: string) => { const item = EDITOR_CATALOG.find((candidate) => candidate.type === type); if (!item || widgets.some((widget) => widget.type === type)) return; onChange(normalizeWidgets([...widgets, { id: `${type}-${Date.now()}`, type, title: item.label, enabled: true, position: widgets.length, width: item.width, config: {} }])); };
+  const drop = (targetId: string) => { if (!draggedId || draggedId === targetId) return; const next = [...widgets]; const from = next.findIndex((widget) => widget.id === draggedId); const to = next.findIndex((widget) => widget.id === targetId); if (from < 0 || to < 0) return; const [item] = next.splice(from, 1); next.splice(to, 0, item); onChange(normalizeWidgets(next)); setDraggedId(null); };
+  const status = saveState === "saving" ? "Saving changes…" : saveState === "saved" ? "All changes saved" : saveState === "error" ? "Save failed — retrying on next change" : "Autosave is on";
+  return <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-black">Arrange your command center</p><p className="mt-1 text-xs text-primary/55">Drag cards or use the keyboard-friendly arrows. Changes save automatically.</p></div><div className={`flex items-center gap-2 text-xs font-semibold ${saveState === "error" ? "text-destructive" : "text-emerald-600"}`}><Save className="size-3.5" />{status}</div></div>
+      {widgets.map((widget, index) => <div key={widget.id} draggable onDragStart={() => setDraggedId(widget.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => drop(widget.id)} className={`rounded-2xl border p-3 transition-colors ${widget.enabled ? "border-primary/10 bg-background" : "border-dashed border-primary/15 bg-primary/[0.03] opacity-70"}`}>
+        <div className="flex items-start gap-3"><button type="button" aria-label={`Drag ${widgetLabel(widget)}`} className="mt-2 cursor-grab text-primary/30 active:cursor-grabbing"><GripVertical className="size-4" /></button><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><Input aria-label={`${widgetLabel(widget)} title`} value={widget.title || ""} onChange={(event) => update(widget.id, { title: event.target.value.slice(0, 160) })} className="h-9 min-w-40 flex-1 rounded-lg font-semibold" /><select aria-label={`${widgetLabel(widget)} width`} value={widget.width} onChange={(event) => update(widget.id, { width: event.target.value as DashboardWidget["width"] })} className="h-9 rounded-lg border border-input bg-background px-2 text-xs"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="full">Full width</option></select></div><p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-primary/40">{widget.type.replaceAll("-", " ")}</p><div className="mt-2 flex flex-wrap items-center gap-2"><label className="text-xs text-primary/60">Network</label><select aria-label={`${widgetLabel(widget)} network`} value={String(widget.config?.network || "all")} onChange={(event) => update(widget.id, { config: { ...widget.config, network: event.target.value } })} className="h-8 rounded-lg border border-input bg-background px-2 text-xs"><option value="all">All networks</option><option value="ethereum">Ethereum</option><option value="solana">Solana</option></select><label className="text-xs text-primary/60">Limit</label><input aria-label={`${widgetLabel(widget)} item limit`} type="number" min={1} max={50} value={Number(widget.config?.limit || 12)} onChange={(event) => update(widget.id, { config: { ...widget.config, limit: Math.max(1, Math.min(50, Number(event.target.value) || 1)) } })} className="h-8 w-16 rounded-lg border border-input bg-background px-2 text-xs" /></div></div><div className="flex items-center gap-1"><button type="button" aria-label="Move widget up" onClick={() => move(index, -1)} className="rounded-lg p-2 text-primary/45 hover:bg-primary/5 hover:text-primary"><ChevronUp className="size-4" /></button><button type="button" aria-label="Move widget down" onClick={() => move(index, 1)} className="rounded-lg p-2 text-primary/45 hover:bg-primary/5 hover:text-primary"><ChevronDown className="size-4" /></button><button type="button" aria-label={widget.enabled ? "Disable widget" : "Enable widget"} onClick={() => update(widget.id, { enabled: !widget.enabled })} className="rounded-lg p-2 text-primary/45 hover:bg-primary/5 hover:text-primary">{widget.enabled ? <Eye className="size-4" /> : <EyeOff className="size-4" />}</button><button type="button" aria-label="Remove widget" onClick={() => onChange(normalizeWidgets(widgets.filter((item) => item.id !== widget.id)))} className="rounded-lg p-2 text-destructive/60 hover:bg-destructive/5 hover:text-destructive"><Trash2 className="size-4" /></button></div></div>
+      </div>)}
+      {!widgets.length && <div className="rounded-2xl border border-dashed border-primary/20 p-8 text-center text-sm text-primary/55">Your canvas is empty. Add a widget to get started.</div>}
+    </div>
+    <aside className="rounded-2xl border border-primary/10 bg-primary/[0.03] p-4"><p className="text-xs font-black uppercase tracking-[0.16em] text-primary/45">Add widget</p><div className="mt-3 space-y-2">{EDITOR_CATALOG.filter((item) => !widgets.some((widget) => widget.type === item.type)).map((item) => <button type="button" key={item.type} onClick={() => addWidget(item.type)} className="flex w-full items-center justify-between rounded-xl border border-primary/10 bg-background px-3 py-2.5 text-left text-sm transition-colors hover:border-primary/30 hover:bg-primary/[0.04]"><span>{item.label}</span><Plus className="size-4 text-primary/50" /></button>)}</div><button type="button" onClick={onReset} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/20 px-3 py-2.5 text-xs font-bold text-amber-700 transition-colors hover:bg-amber-500/10"><RotateCcw className="size-3.5" />Reset to default</button></aside>
+  </div>;
+}
+
 function InsightWidget({ widgetType }: { widgetType: string }) {
   const meta = widgetMeta[widgetType] || { icon: Gauge, eyebrow: "Workspace signal", accent: "text-primary", value: "Awaiting sync", detail: widgetType.replaceAll("-", " ") };
   const Icon = meta.icon;
@@ -63,7 +101,7 @@ function InsightWidget({ widgetType }: { widgetType: string }) {
 }
 
 function RegisteredWidget({ widgetType, dashboardId }: { widgetType: string; dashboardId: string }) {
-  if (widgetType === "connected-wallets") return <ConnectedWallets />;
+  if (widgetType === "connected-wallets") return <ConnectedWallets displayOnly />;
   if (widgetType === "portfolio-value") return <PortfolioDashboard dashboardId={dashboardId} />;
   if (widgetType === "security-score") return <SecurityCenter />;
   return <InsightWidget widgetType={widgetType} />;
@@ -171,15 +209,22 @@ function GeneratedComponent({ component, dashboardId }: { component: UIComponent
   );
 }
 
-function GeneratedUi({ document, density, dashboardId }: { document: UIDocument; density: Dashboard["density"]; dashboardId: string }) {
+function GeneratedUi({ document, density, dashboardId, dashboardWidgets }: { document: UIDocument; density: Dashboard["density"]; dashboardId: string; dashboardWidgets: DashboardWidget[] }) {
   const spec = document.spec;
   const components = useMemo(() => {
     const base = spec.components || [];
-    if (density !== "analytics" || base.length >= 6) return base;
-    const existing = new Set(base.filter((item) => item.type === "widget").map((item) => item.widgetType));
-    const extras: UIComponent[] = ["balances", "token-holdings", "transactions", "portfolio-history", "risk-summary"].filter((widgetType) => !existing.has(widgetType)).map((widgetType) => ({ type: "widget", id: `analytics-${widgetType}`, widgetType, title: widgetType.replaceAll("-", " "), width: "medium" }));
-    return [...base, ...extras].slice(0, 9);
-  }, [density, spec.components]);
+    const enabled = dashboardWidgets.filter((widget) => widget.enabled).sort((a, b) => a.position - b.position);
+    const byType = new Map(enabled.map((widget) => [widget.type, widget]));
+    const configured: UIComponent[] = [];
+    base.forEach((item) => {
+      if (item.type !== "widget") { configured.push(item); return; }
+      const widget = byType.get(item.widgetType);
+      if (widget) configured.push({ ...item, title: widget.title || item.title, width: widget.width });
+    });
+    const existing = new Set(configured.filter((item) => item.type === "widget").map((item) => item.widgetType));
+    const extras: UIComponent[] = enabled.filter((widget) => !existing.has(widget.type)).map((widget) => ({ type: "widget", id: widget.id, widgetType: widget.type, title: widget.title || widget.type.replaceAll("-", " "), width: widget.width }));
+    return density === "analytics" ? [...configured, ...extras].slice(0, 20) : [...configured, ...extras];
+  }, [dashboardWidgets, density, spec.components]);
   const accent = accentClasses[spec.accentPreset] || accentClasses.cyan;
   const columns = density === "analytics" ? Math.max(2, Math.min(4, Number(spec.columns) || 3)) : Math.max(1, Math.min(4, Number(spec.columns) || 2));
 
@@ -243,6 +288,32 @@ export default function DynamicDashboard() {
   const [planning, setPlanning] = useState(false);
   const [applying, setApplying] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draftWidgets, setDraftWidgets] = useState<DashboardWidget[]>([]);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const persistWidgets = async (widgets: DashboardWidget[]) => {
+    if (!dashboard) return;
+    setSaveState("saving");
+    try {
+      const result = await updateDashboard(dashboard._id, { widgets: normalizeWidgets(widgets), expectedVersion: dashboard.version ?? 1, revisionSummary: "Edited dashboard widgets" });
+      setDashboard(result.dashboard);
+      setDashboards((items) => items.map((item) => item._id === result.dashboard._id ? result.dashboard : item));
+      setSaveState("saved");
+    } catch (error) {
+      setSaveState("error");
+      toast.error(error instanceof Error ? error.message : "Couldn't save widget changes.");
+    }
+  };
+
+  useEffect(() => { if (dashboard) setDraftWidgets(normalizeWidgets(dashboard.widgets)); }, [dashboard?._id]);
+  useEffect(() => {
+    if (!editing || !dashboard) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => void persistWidgets(draftWidgets), 700);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [draftWidgets, editing]);
 
   const load = async () => {
     setLoading(true);
@@ -268,16 +339,17 @@ export default function DynamicDashboard() {
       setDashboard(result.dashboard);
       setUiDocument(result.uiDocument);
       setPlan(null);
+      setEditing(false);
     } catch (error) { toast.error(error instanceof Error ? error.message : "Couldn't load that dashboard."); }
   };
 
   const saveDashboardSetting = async (patch: Partial<Dashboard>) => {
     if (!dashboard) return;
     try {
-      const result = await updateDashboard(dashboard._id, { ...patch, revisionSummary: "Updated dashboard settings" });
+      const result = await updateDashboard(dashboard._id, { ...patch, expectedVersion: dashboard.version ?? 1, revisionSummary: "Updated dashboard settings" });
       setDashboard(result.dashboard);
       setDashboards((items) => items.map((item) => item._id === result.dashboard._id ? result.dashboard : item));
-      toast.success("Dashboard settings saved.");
+      setSaveState("saved");
     } catch (error) { toast.error(error instanceof Error ? error.message : "Couldn't save dashboard settings."); }
   };
 
@@ -338,9 +410,12 @@ export default function DynamicDashboard() {
       setDashboards((items) => [...items, result.dashboard]);
       setUiDocument(result.uiDocument);
       setPlan(null);
+      setEditing(false);
       toast.success("New dashboard created.");
     } catch { toast.error("Couldn't create a new dashboard."); }
   };
+
+  const resetWidgets = () => { setDraftWidgets(normalizeWidgets(DEFAULT_EDITOR_WIDGETS)); toast.info("Default widget layout queued for save."); };
 
   if (authLoading || loading) return (
     <AiWorkspaceLoader />
@@ -374,6 +449,7 @@ export default function DynamicDashboard() {
             {dashboards.map((item) => <option key={item._id} value={item._id}>{item.name}{item.isDefault ? " · Default" : ""}</option>)}
           </select>
           <Button variant="outline" className="gap-2 rounded-xl border-white/15 bg-white/5 text-white transition-transform hover:-translate-y-0.5 hover:bg-white/15" onClick={newDashboard}><LayoutDashboard className="size-4" />New dashboard</Button>
+          <Button variant={editing ? "default" : "outline"} className="gap-2 rounded-xl border-cyan-300/25 bg-cyan-300/10 text-cyan-100 transition-transform hover:-translate-y-0.5 hover:bg-cyan-300/20" onClick={() => { setEditing((value) => !value); setDraftWidgets(normalizeWidgets(dashboard.widgets)); }}><Settings2 className="size-4" />{editing ? "Done editing" : "Edit layout"}</Button>
           <Button variant="ghost" className="gap-2 rounded-xl text-white/70 hover:bg-white/10 hover:text-white" onClick={undo}><RotateCcw className="size-4" />Undo</Button>
           </div>
         </div>
@@ -388,6 +464,8 @@ export default function DynamicDashboard() {
           <Input aria-label="Dashboard name" placeholder="Workspace name" defaultValue={dashboard.name} key={dashboard._id + dashboard.name} onBlur={(event) => { const name = event.target.value.trim(); if (name && name !== dashboard.name) void saveDashboardSetting({ name }); }} className="h-9 w-full rounded-xl sm:w-44" />
         </div>
       </div>
+
+      {editing && <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="relative rounded-[2rem] border border-cyan-500/20 bg-background p-5 text-foreground shadow-xl shadow-black/5 sm:p-6"><div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-600">Layout editor</p><h3 className="mt-1 text-xl font-black tracking-tight">Build the desk around your priorities</h3></div><p className="text-xs text-primary/50">{draftWidgets.filter((widget) => widget.enabled).length} visible · {draftWidgets.length} configured</p></div><DashboardEditor widgets={draftWidgets} onChange={setDraftWidgets} onReset={resetWidgets} saveState={saveState} /></motion.div>}
 
       <div className="relative rounded-[2rem] border border-primary/10 bg-background p-5 text-foreground shadow-xl shadow-black/5 sm:p-6">
         <div className="text-sm font-bold">Describe the layout you want</div>
@@ -421,7 +499,7 @@ export default function DynamicDashboard() {
         )}
       </div>
 
-      <GeneratedUi document={uiDocument} density={dashboard.density} dashboardId={dashboard._id} />
+      <GeneratedUi document={uiDocument} density={dashboard.density} dashboardId={dashboard._id} dashboardWidgets={dashboard.widgets} />
       <WorkspaceModelsPanel
         dashboard={dashboard}
         onTemplateApplied={(nextDashboard, nextUiDocument) => {

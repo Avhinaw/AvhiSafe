@@ -3,6 +3,7 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { collections, ensureUIDocument, findDashboardForUser } from "../db.js";
 import { revisionFor } from "../dashboardService.js";
+import { rateLimit } from "../middleware/security.js";
 import { saveUiForUser, uiRevisionFor } from "../uiService.js";
 import { normalizeWalletAddress } from "../walletValidation.js";
 import { widgetCatalog, type WidgetType } from "../widgetCatalog.js";
@@ -13,6 +14,7 @@ import type {
 } from "../models/index.js";
 
 export const modelRoutes = Router();
+modelRoutes.use("/security", rateLimit({ windowMs: 60_000, max: 20, message: "Too many security requests. Please try again shortly." }));
 
 function userId(request: Request, response: Response) {
   if (!request.auth) {
@@ -366,7 +368,7 @@ modelRoutes.get("/security/scans", async (request, response) => {
   return response.json({ scans, alerts, checks, coverage: "Wallet-record validation only. This is not a transaction, contract, or phishing scan." });
 });
 
-modelRoutes.post("/security/scans", async (request, response) => {
+modelRoutes.post(["/security/scans", "/security/scan"], async (request, response) => {
   try {
     const id = userId(request, response);
     if (!id) return;

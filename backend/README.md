@@ -114,6 +114,11 @@ Every user-owned document contains a `userId`. Dashboard reads and writes must a
 | `GET /api/v1/sessions` | List safe session metadata without token or fingerprint hashes |
 | `GET /api/v1/audit-logs` | Read recent workspace model actions for the authenticated user |
 | `GET /api/v1/integrations` | List safe integration metadata and report available adapters |
+| `POST /api/v1/portfolio` | Refresh active user-owned wallets and persist normalized snapshot records |
+| `GET /api/v1/portfolio/history` | Read the authenticated user’s persisted portfolio history |
+| `GET /api/v1/security/alerts` | List the authenticated user’s security alerts |
+| `GET /api/v1/security/scans` | List recent deterministic security scans |
+| `POST /api/v1/security/scan` | Run a baseline wallet-record metadata scan; it does not inspect transactions or contracts |
 
 ## Authentication and wallet routes
 
@@ -131,6 +136,8 @@ Authentication uses a short-lived, single-use wallet signature challenge. The se
 | `POST /api/v1/wallets/connected` | Save a connected-wallet public address and provider metadata |
 | `PATCH /api/v1/wallets/:walletId` | Rename, hide, archive, disconnect, or update networks |
 | `DELETE /api/v1/wallets/:walletId` | Soft-remove a wallet from the account |
+| `GET /api/v1/auth/export` | Download user-owned account data without session secrets |
+| `DELETE /api/v1/auth/account` | Permanently delete account data after `{ "confirmation": "DELETE" }` |
 
 For local development, use `AUTH_DOMAIN=localhost:3000`, `AUTH_URI=http://localhost:3000`, and `COOKIE_SECURE=false` (which defaults `COOKIE_SAME_SITE` to `Lax`). The deployed Netlify-to-Render setup requires HTTPS, `COOKIE_SECURE=true`, `COOKIE_SAME_SITE=None`, and credentialed browser requests so the HttpOnly session cookie is included.
 

@@ -51,3 +51,20 @@ export function loadCurrentUser() {
 export function logoutApi() {
   return request<void>("/api/v1/auth/logout", { method: "POST" });
 }
+
+export async function downloadAccountExport() {
+  const response = await fetch(`${backendUrl}/api/v1/auth/export`, { credentials: "include" });
+  if (response.status === 401) notifySessionExpired();
+  if (!response.ok) { const body = await response.json().catch(() => ({})) as { error?: string }; throw new Error(body.error || `Account export failed (${response.status}).`); }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `avhisafe-account-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function deleteAccount() {
+  return request<void>("/api/v1/auth/account", { method: "DELETE", body: JSON.stringify({ confirmation: "DELETE" }) });
+}

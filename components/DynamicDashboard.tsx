@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Activity, ArrowUpRight, BarChart3, CircleDollarSign, Gauge, LayoutDashboard, RotateCcw, Wand2, Check, AlertTriangle, Loader2, Settings2, ShieldCheck, Sparkles, Wallet, Waves, Plus, Trash2, GripVertical, Eye, EyeOff, ChevronUp, ChevronDown, Save } from "lucide-react";
+import { Activity, ArrowUpRight, BarChart3, Bell, CircleDollarSign, Clock3, Gauge, LayoutDashboard, RotateCcw, Wand2, Check, AlertTriangle, Loader2, RefreshCw, Search, Settings2, ShieldAlert, ShieldCheck, Sparkles, Wallet, Waves, Plus, Trash2, GripVertical, Eye, EyeOff, ChevronUp, ChevronDown, Save } from "lucide-react";
 import { toast } from "sonner";
 import ConnectedWallets from "./ConnectedWallets";
 import PortfolioDashboard from "./PortfolioDashboard";
@@ -13,6 +13,9 @@ import { applyDashboardPlan, createDashboard, loadDashboard, loadWorkspace, plan
 import { AiWorkspaceLoader } from "./ui/AiWorkspaceLoader";
 import { useAuth } from "./AuthProvider";
 import WorkspaceModelsPanel from "./WorkspaceModelsPanel";
+import { loadActivity, loadSecurityData, listNotifications } from "@/lib/modelApi";
+import { loadPortfolioHistory } from "@/lib/portfolio";
+import { listServerWallets } from "@/lib/walletApi";
 
 const accentClasses: Record<string, string> = {
   cyan: "border-cyan-500/30 bg-cyan-500/[0.04]",
@@ -35,16 +38,163 @@ function DashboardKpi({ icon: Icon, label, value, detail, tone }: { icon: typeof
   return <motion.div whileHover={{ y: -3 }} className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.07] p-4 text-white backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.12]"><div className={`mb-5 flex size-9 items-center justify-center rounded-xl ${tone}`}><Icon className="size-4" /></div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">{label}</p><p className="mt-1 text-xl font-black tracking-tight">{value}</p><p className="mt-1 text-xs text-white/45">{detail}</p><div className="absolute -bottom-8 -right-5 size-20 rounded-full bg-white/10 blur-2xl transition-transform duration-500 group-hover:scale-150" /></motion.div>;
 }
 
+type OverviewData = {
+  portfolioValue: number | null;
+  portfolioTimestamp?: number;
+  portfolioDataQuality?: string;
+  activeWallets: number;
+  balanceRecords: number;
+  tokenAssets: number;
+  recentTransactions: number;
+  openAlerts: number;
+  unreadNotifications: number;
+  historyPoints: number;
+  lastSync?: number;
+  latestScanStatus?: string;
+};
+
+function relativeTime(timestamp?: number) {
+  if (!timestamp || !Number.isFinite(timestamp)) return "No successful sync recorded";
+  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
+  if (minutes < 1) return "Updated just now";
+  if (minutes < 60) return `Updated ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Updated ${hours}h ago`;
+  return `Updated ${Math.floor(hours / 24)}d ago`;
+}
+
+function DashboardOverview({
+  search,
+  onSearchChange,
+  onEditLayout,
+  onCreateDashboard,
+  onNavigate,
+  onDataChange,
+}: {
+  search: string;
+  onSearchChange: (value: string) => void;
+  onEditLayout: () => void;
+  onCreateDashboard: () => void;
+  onNavigate: (target: "ai" | "portfolio" | "security" | "wallets") => void;
+  onDataChange: (data: OverviewData) => void;
+}) {
+  const [data, setData] = useState<OverviewData | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const [activity, security, inbox, history, walletResult] = await Promise.all([
+        loadActivity(),
+        loadSecurityData(),
+        listNotifications(),
+        loadPortfolioHistory(14),
+        listServerWallets(),
+      ]);
+      const syncDates = [...activity.walletSyncs, ...activity.transactionSyncs]
+        .filter((sync) => sync.status !== "failed")
+        .map((sync) => sync.completedAt ? Date.parse(sync.completedAt) : Number.NaN)
+        .filter(Number.isFinite);
+      const latestHistory = history[history.length - 1];
+      const overview = {
+        portfolioValue: latestHistory?.value ?? null,
+        portfolioTimestamp: latestHistory?.timestamp,
+        portfolioDataQuality: latestHistory?.dataQuality,
+        activeWallets: walletResult.wallets.filter((wallet) => wallet.status === "active").length,
+        balanceRecords: activity.tokenBalances.filter((balance) => typeof balance.value === "number").length,
+        tokenAssets: new Set(activity.assets.filter((asset) => asset.assetType === "token").map((asset) => asset._id)).size,
+        recentTransactions: activity.transactions.length,
+        openAlerts: security.alerts.length,
+        unreadNotifications: inbox.notifications.filter((notification) => notification.status === "unread").length,
+        historyPoints: history.length,
+        lastSync: syncDates.length ? Math.max(...syncDates) : undefined,
+        latestScanStatus: security.scans[0]?.status,
+      };
+      setData(overview);
+      onDataChange(overview);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Unable to load the workspace overview.");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [onDataChange]);
+
+  useEffect(() => {
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 60_000);
+    const onWorkspaceUpdate = () => void refresh();
+    window.addEventListener("avhisafe:wallets-updated", onWorkspaceUpdate);
+    window.addEventListener("avhisafe:connected-wallets-updated", onWorkspaceUpdate);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("avhisafe:wallets-updated", onWorkspaceUpdate);
+      window.removeEventListener("avhisafe:connected-wallets-updated", onWorkspaceUpdate);
+    };
+  }, [refresh]);
+
+  const portfolioValue = data?.portfolioValue === null || data?.portfolioValue === undefined
+    ? "No snapshot yet"
+    : new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(data.portfolioValue);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200/65">Workspace briefing</p>
+          <h3 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl">Your account, at a glance</h3>
+          <p className="mt-1 text-xs text-white/45">Private wallet intelligence, grounded in your saved records.</p>
+        </div>
+        <Button onClick={() => void refresh()} disabled={refreshing} variant="outline" className="gap-2 border-white/15 bg-white/5 text-white hover:bg-white/10">
+          <RefreshCw className={refreshing ? "size-4 animate-spin" : "size-4"} />
+          {refreshing ? "Updating…" : "Refresh overview"}
+        </Button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <DashboardKpi icon={CircleDollarSign} label="Latest portfolio snapshot" value={portfolioValue} detail={data?.portfolioDataQuality ? `${data.portfolioDataQuality} data · ${relativeTime(data.portfolioTimestamp)}` : relativeTime(data?.portfolioTimestamp)} tone="bg-cyan-400/15 text-cyan-200" />
+        <DashboardKpi icon={Wallet} label="Active wallets" value={data ? String(data.activeWallets) : "—"} detail="Owned wallet records" tone="bg-violet-400/15 text-violet-200" />
+        <DashboardKpi icon={Activity} label="Indexed activity" value={data ? String(data.recentTransactions) : "—"} detail="Recent transaction records loaded" tone="bg-amber-400/15 text-amber-200" />
+        <DashboardKpi icon={ShieldAlert} label="Open metadata alerts" value={data ? String(data.openAlerts) : "—"} detail={data?.latestScanStatus ? `Latest baseline scan: ${data.latestScanStatus}` : "No baseline scan recorded"} tone="bg-rose-400/15 text-rose-200" />
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-white/55">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1"><Clock3 className="size-3.5 text-cyan-200" />{relativeTime(data?.lastSync)}</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1"><Bell className="size-3.5 text-violet-200" />{data ? data.unreadNotifications : "—"} unread notifications</span>
+          <span className="text-[10px] text-white/35">Security checks cover wallet metadata only.</span>
+        </div>
+        <label className="relative block w-full sm:max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
+          <Input value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Find a widget…" aria-label="Search dashboard widgets" className="h-9 border-white/10 bg-white/[0.06] pl-9 text-white placeholder:text-white/35 focus-visible:ring-cyan-300/50" />
+        </label>
+      </div>
+
+      {error && <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-300/20 bg-rose-300/[0.08] px-3 py-2 text-xs text-rose-100"><span>{error}</span><button type="button" className="font-bold underline underline-offset-2" onClick={() => void refresh()}>Retry</button></div>}
+
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => onNavigate("ai")} className="rounded-full border border-cyan-200/20 bg-cyan-200/[0.08] px-3 py-1.5 text-xs font-bold text-cyan-100 transition-colors hover:bg-cyan-200/[0.16]"><Sparkles className="mr-1.5 inline size-3.5" />Design with AI</button>
+        <button type="button" onClick={onEditLayout} className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-bold text-white/70 transition-colors hover:bg-white/10">Customize widgets</button>
+        <button type="button" onClick={() => onNavigate("portfolio")} className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-bold text-white/70 transition-colors hover:bg-white/10">Open portfolio</button>
+        <button type="button" onClick={() => onNavigate("security")} className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-bold text-white/70 transition-colors hover:bg-white/10">Review security</button>
+        <button type="button" onClick={() => onNavigate("wallets")} className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-bold text-white/70 transition-colors hover:bg-white/10">Manage wallets</button>
+        <button type="button" onClick={onCreateDashboard} className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-bold text-white/70 transition-colors hover:bg-white/10">Create workspace</button>
+      </div>
+    </div>
+  );
+}
+
 function widgetLabel(widget: DashboardWidget) { return widget.title || widget.type.replaceAll("-", " "); }
 
 const widgetMeta: Record<string, { icon: typeof Activity; eyebrow: string; accent: string; value: string; detail: string }> = {
-  balances: { icon: Wallet, eyebrow: "Network spread", accent: "text-sky-600 dark:text-sky-300", value: "ETH  ·  SOL", detail: "Native balances" },
-  "token-holdings": { icon: CircleDollarSign, eyebrow: "Asset mix", accent: "text-violet-600 dark:text-violet-300", value: "12 assets", detail: "Token holdings" },
-  transactions: { icon: Activity, eyebrow: "Live ledger", accent: "text-amber-600 dark:text-amber-300", value: "Recent activity", detail: "Review your latest movements" },
-  "portfolio-history": { icon: BarChart3, eyebrow: "Performance", accent: "text-emerald-600 dark:text-emerald-300", value: "Trendline ready", detail: "Historical portfolio value" },
-  "risk-summary": { icon: ShieldCheck, eyebrow: "Risk desk", accent: "text-rose-600 dark:text-rose-300", value: "Low exposure", detail: "No urgent review items" },
-  "defi-positions": { icon: Waves, eyebrow: "Protocols", accent: "text-cyan-600 dark:text-cyan-300", value: "Coming online", detail: "Staking, lending and liquidity" },
-  "nft-gallery": { icon: Sparkles, eyebrow: "Collectibles", accent: "text-fuchsia-600 dark:text-fuchsia-300", value: "Gallery ready", detail: "NFT holdings and metadata" },
+  balances: { icon: Wallet, eyebrow: "Network spread", accent: "text-sky-600 dark:text-sky-300", value: "Balance data", detail: "Available in your portfolio view" },
+  "token-holdings": { icon: CircleDollarSign, eyebrow: "Asset mix", accent: "text-violet-600 dark:text-violet-300", value: "Tracked assets", detail: "Public wallet balances only" },
+  transactions: { icon: Activity, eyebrow: "Activity", accent: "text-amber-600 dark:text-amber-300", value: "Indexed records", detail: "Recent activity from supported providers" },
+  "portfolio-history": { icon: BarChart3, eyebrow: "Performance", accent: "text-emerald-600 dark:text-emerald-300", value: "Saved snapshots", detail: "Portfolio history from completed refreshes" },
+  "risk-summary": { icon: ShieldCheck, eyebrow: "Risk desk", accent: "text-rose-600 dark:text-rose-300", value: "Metadata checks", detail: "Not a contract or investment risk rating" },
+  "defi-positions": { icon: Waves, eyebrow: "Protocols", accent: "text-cyan-600 dark:text-cyan-300", value: "Not connected", detail: "No DeFi data adapter is configured" },
+  "nft-gallery": { icon: Sparkles, eyebrow: "Collectibles", accent: "text-fuchsia-600 dark:text-fuchsia-300", value: "Not connected", detail: "No NFT data adapter is configured" },
 };
 
 const EDITOR_CATALOG = [
@@ -85,26 +235,40 @@ function DashboardEditor({ widgets, onChange, onReset, saveState }: { widgets: D
   </div>;
 }
 
-function InsightWidget({ widgetType }: { widgetType: string }) {
+function InsightWidget({ widgetType, overview }: { widgetType: string; overview: OverviewData | null }) {
   const meta = widgetMeta[widgetType] || { icon: Gauge, eyebrow: "Workspace signal", accent: "text-primary", value: "Awaiting sync", detail: widgetType.replaceAll("-", " ") };
+  const liveValue = overview && ({
+    balances: `${overview.balanceRecords} records`,
+    "token-holdings": `${overview.tokenAssets} assets`,
+    transactions: `${overview.recentTransactions} records`,
+    "portfolio-history": `${overview.historyPoints} snapshots`,
+    "risk-summary": `${overview.openAlerts} open alerts`,
+  } as Record<string, string>)[widgetType];
+  const liveDetail = overview && ({
+    balances: "Saved public-wallet balances",
+    "token-holdings": "Assets with indexed token balances",
+    transactions: "Recent indexed transaction records",
+    "portfolio-history": "Recent persisted portfolio snapshots",
+    "risk-summary": overview.latestScanStatus ? `Wallet metadata scan: ${overview.latestScanStatus}` : "No baseline wallet check recorded",
+  } as Record<string, string>)[widgetType];
   const Icon = meta.icon;
   return (
     <motion.div whileHover={{ y: -4 }} transition={{ type: "spring", stiffness: 280, damping: 20 }} className="group relative overflow-hidden rounded-2xl border border-primary/10 bg-background/80 p-5 shadow-sm transition-shadow duration-300 hover:shadow-xl hover:shadow-primary/10">
       <div className="absolute -right-10 -top-10 size-28 rounded-full bg-primary/[0.06] blur-2xl transition-transform duration-500 group-hover:scale-150" />
       <div className="relative flex items-start justify-between gap-3"><div className={`flex size-10 items-center justify-center rounded-xl bg-primary/[0.07] ${meta.accent}`}><Icon className="size-5" /></div><ArrowUpRight className="size-4 text-primary/30 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div>
       <p className="relative mt-5 text-[10px] font-black uppercase tracking-[0.18em] text-primary/45">{meta.eyebrow}</p>
-      <p className="relative mt-2 text-xl font-black tracking-tight">{meta.value}</p>
-      <p className="relative mt-1 text-sm text-primary/55">{meta.detail}</p>
+      <p className="relative mt-2 text-xl font-black tracking-tight">{liveValue || meta.value}</p>
+      <p className="relative mt-1 text-sm text-primary/55">{liveDetail || meta.detail}</p>
       <div className="relative mt-5 h-1 overflow-hidden rounded-full bg-primary/10"><motion.div initial={{ width: 0 }} animate={{ width: widgetType === "risk-summary" ? "28%" : "68%" }} transition={{ delay: 0.25, duration: 0.8 }} className={`h-full rounded-full bg-current ${meta.accent}`} /></div>
     </motion.div>
   );
 }
 
-function RegisteredWidget({ widgetType, dashboardId }: { widgetType: string; dashboardId: string }) {
+function RegisteredWidget({ widgetType, dashboardId, overview }: { widgetType: string; dashboardId: string; overview: OverviewData | null }) {
   if (widgetType === "connected-wallets") return <ConnectedWallets displayOnly />;
   if (widgetType === "portfolio-value") return <PortfolioDashboard dashboardId={dashboardId} />;
   if (widgetType === "security-score") return <SecurityCenter />;
-  return <InsightWidget widgetType={widgetType} />;
+  return <InsightWidget widgetType={widgetType} overview={overview} />;
 }
 
 function SafeComponent({ children }: { children: React.ReactNode }) {
@@ -124,7 +288,7 @@ function SafeComponent({ children }: { children: React.ReactNode }) {
 //   was causing cards to render flush against each other with no gap
 const ITEM_WRAP_CLASS = "min-w-0 overflow-hidden break-inside-avoid block w-full mb-4";
 
-function GeneratedComponent({ component, dashboardId }: { component: UIComponent; dashboardId: string }) {
+function GeneratedComponent({ component, dashboardId, overview }: { component: UIComponent; dashboardId: string; overview: OverviewData | null }) {
   if (component.type === "widget") {
     // No border/bg on this wrapper — ConnectedWallets / PortfolioDashboard /
     // SecurityCenter already render their own card chrome internally.
@@ -136,12 +300,13 @@ function GeneratedComponent({ component, dashboardId }: { component: UIComponent
         exit={{ opacity: 0, y: -12 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
         className={`${ITEM_WRAP_CLASS} transition-transform duration-300 hover:translate-y-[-2px]`}
+        data-dashboard-widget={component.widgetType}
       >
         <div className="mb-2 px-1 text-xs font-bold uppercase tracking-wider text-primary/45">
           {component.title || component.widgetType.replaceAll("-", " ")}
         </div>
         <SafeComponent>
-          <RegisteredWidget widgetType={component.widgetType} dashboardId={dashboardId} />
+          <RegisteredWidget widgetType={component.widgetType} dashboardId={dashboardId} overview={overview} />
         </SafeComponent>
       </motion.div>
     );
@@ -209,7 +374,7 @@ function GeneratedComponent({ component, dashboardId }: { component: UIComponent
   );
 }
 
-function GeneratedUi({ document, density, dashboardId, dashboardWidgets }: { document: UIDocument; density: Dashboard["density"]; dashboardId: string; dashboardWidgets: DashboardWidget[] }) {
+function GeneratedUi({ document, density, dashboardId, dashboardWidgets, searchQuery, overview }: { document: UIDocument; density: Dashboard["density"]; dashboardId: string; dashboardWidgets: DashboardWidget[]; searchQuery: string; overview: OverviewData | null }) {
   const spec = document.spec;
   const components = useMemo(() => {
     const base = spec.components || [];
@@ -223,8 +388,20 @@ function GeneratedUi({ document, density, dashboardId, dashboardWidgets }: { doc
     });
     const existing = new Set(configured.filter((item) => item.type === "widget").map((item) => item.widgetType));
     const extras: UIComponent[] = enabled.filter((widget) => !existing.has(widget.type)).map((widget) => ({ type: "widget", id: widget.id, widgetType: widget.type, title: widget.title || widget.type.replaceAll("-", " "), width: widget.width }));
-    return density === "analytics" ? [...configured, ...extras].slice(0, 20) : [...configured, ...extras];
-  }, [dashboardWidgets, density, spec.components]);
+    const allComponents = density === "analytics" ? [...configured, ...extras].slice(0, 20) : [...configured, ...extras];
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return allComponents;
+    return allComponents.filter((item) => {
+      const text = item.type === "widget"
+        ? `${item.title || ""} ${item.widgetType}`
+        : item.type === "text"
+          ? item.text
+          : item.type === "metric"
+            ? `${item.label} ${item.source || ""}`
+            : `${item.title || ""} ${item.text || item.body || item.content || item.description || ""}`;
+      return text.toLowerCase().includes(query);
+    });
+  }, [dashboardWidgets, density, searchQuery, spec.components]);
   const accent = accentClasses[spec.accentPreset] || accentClasses.cyan;
   const columns = density === "analytics" ? Math.max(2, Math.min(4, Number(spec.columns) || 3)) : Math.max(1, Math.min(4, Number(spec.columns) || 2));
 
@@ -260,17 +437,19 @@ function GeneratedUi({ document, density, dashboardId, dashboardWidgets }: { doc
         <div style={columnStyle}>
           <AnimatePresence mode="popLayout">
             {components.map((component) => (
-              <GeneratedComponent key={component.id} component={component} dashboardId={dashboardId} />
+              <GeneratedComponent key={component.id} component={component} dashboardId={dashboardId} overview={overview} />
             ))}
           </AnimatePresence>
+          {searchQuery.trim() && components.length === 0 && <p className="rounded-xl border border-dashed border-primary/15 p-6 text-center text-sm text-primary/55">No widgets match “{searchQuery}”. Clear the search to see your full workspace.</p>}
         </div>
       ) : (
         <div className="flex flex-col gap-4">
           <AnimatePresence mode="popLayout">
             {components.map((component) => (
-              <GeneratedComponent key={component.id} component={component} dashboardId={dashboardId} />
+              <GeneratedComponent key={component.id} component={component} dashboardId={dashboardId} overview={overview} />
             ))}
           </AnimatePresence>
+          {searchQuery.trim() && components.length === 0 && <p className="rounded-xl border border-dashed border-primary/15 p-6 text-center text-sm text-primary/55">No widgets match “{searchQuery}”. Clear the search to see your full workspace.</p>}
         </div>
       )}
     </motion.div>
@@ -284,14 +463,21 @@ export default function DynamicDashboard() {
   const [uiDocument, setUiDocument] = useState<UIDocument | null>(null);
   const [prompt, setPrompt] = useState("");
   const [plan, setPlan] = useState<DashboardPlan | null>(null);
+  const [overview, setOverview] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [planning, setPlanning] = useState(false);
   const [applying, setApplying] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [widgetSearch, setWidgetSearch] = useState("");
   const [draftWidgets, setDraftWidgets] = useState<DashboardWidget[]>([]);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (editing) editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [editing]);
 
   const persistWidgets = async (widgets: DashboardWidget[]) => {
     if (!dashboard) return;
@@ -416,6 +602,19 @@ export default function DynamicDashboard() {
   };
 
   const resetWidgets = () => { setDraftWidgets(normalizeWidgets(DEFAULT_EDITOR_WIDGETS)); toast.info("Default widget layout queued for save."); };
+  const navigateTo = (target: "ai" | "portfolio" | "security" | "wallets") => {
+    if (target === "ai") {
+      document.getElementById("ai-layout-builder")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    const widgetType = target === "portfolio" ? "portfolio-value" : target === "security" ? "security-score" : "connected-wallets";
+    setWidgetSearch("");
+    window.setTimeout(() => {
+      const widget = document.querySelector<HTMLElement>(`[data-dashboard-widget="${widgetType}"]`);
+      if (widget) widget.scrollIntoView({ behavior: "smooth", block: "start" });
+      else toast.info("That widget is hidden. Enable it from Customize widgets.");
+    }, 0);
+  };
 
   if (authLoading || loading) return (
     <AiWorkspaceLoader />
@@ -437,7 +636,6 @@ export default function DynamicDashboard() {
     </section>
   );
 
-  const activeWidgetCount = dashboard.widgets.filter((widget) => widget.enabled).length;
   return (
     <section className="relative flex flex-col gap-7 overflow-hidden rounded-[2.5rem] bg-[#0b1220] p-3 text-white shadow-2xl shadow-slate-950/20 transition-colors duration-200 sm:p-5">
       <div className="pointer-events-none absolute -left-32 -top-40 size-[30rem] rounded-full bg-cyan-500/10 blur-3xl" /><div className="pointer-events-none absolute -bottom-48 -right-20 size-[28rem] rounded-full bg-violet-500/10 blur-3xl" />
@@ -453,7 +651,14 @@ export default function DynamicDashboard() {
           <Button variant="ghost" className="gap-2 rounded-xl text-white/70 hover:bg-white/10 hover:text-white" onClick={undo}><RotateCcw className="size-4" />Undo</Button>
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3"><DashboardKpi icon={CircleDollarSign} label="Portfolio pulse" value="Read-only" detail="Provider data protected" tone="bg-cyan-400/15 text-cyan-200" /><DashboardKpi icon={Wallet} label="Tracked surface" value={`${activeWidgetCount} widgets`} detail="Across your workspace" tone="bg-violet-400/15 text-violet-200" /><DashboardKpi icon={ShieldCheck} label="Account posture" value="Protected" detail={`${dashboard.density} analytics mode`} tone="bg-emerald-400/15 text-emerald-200" /></div>
+        <DashboardOverview
+          search={widgetSearch}
+          onSearchChange={setWidgetSearch}
+          onEditLayout={() => setEditing(true)}
+          onCreateDashboard={newDashboard}
+          onNavigate={navigateTo}
+          onDataChange={setOverview}
+        />
       </div>
 
       <div className="relative flex flex-col gap-4 rounded-[2rem] border border-primary/10 bg-background p-4 text-foreground shadow-xl shadow-black/5 sm:flex-row sm:items-center sm:justify-between sm:p-5">
@@ -465,9 +670,9 @@ export default function DynamicDashboard() {
         </div>
       </div>
 
-      {editing && <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="relative rounded-[2rem] border border-cyan-500/20 bg-background p-5 text-foreground shadow-xl shadow-black/5 sm:p-6"><div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-600">Layout editor</p><h3 className="mt-1 text-xl font-black tracking-tight">Build the desk around your priorities</h3></div><p className="text-xs text-primary/50">{draftWidgets.filter((widget) => widget.enabled).length} visible · {draftWidgets.length} configured</p></div><DashboardEditor widgets={draftWidgets} onChange={setDraftWidgets} onReset={resetWidgets} saveState={saveState} /></motion.div>}
+      {editing && <motion.div ref={editorRef} id="dashboard-layout-editor" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="relative scroll-mt-6 rounded-[2rem] border border-cyan-500/20 bg-background p-5 text-foreground shadow-xl shadow-black/5 sm:p-6"><div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-600">Layout editor</p><h3 className="mt-1 text-xl font-black tracking-tight">Build the desk around your priorities</h3></div><p className="text-xs text-primary/50">{draftWidgets.filter((widget) => widget.enabled).length} visible · {draftWidgets.length} configured</p></div><DashboardEditor widgets={draftWidgets} onChange={setDraftWidgets} onReset={resetWidgets} saveState={saveState} /></motion.div>}
 
-      <div className="relative rounded-[2rem] border border-primary/10 bg-background p-5 text-foreground shadow-xl shadow-black/5 sm:p-6">
+      <div id="ai-layout-builder" className="relative scroll-mt-6 rounded-[2rem] border border-primary/10 bg-background p-5 text-foreground shadow-xl shadow-black/5 sm:p-6">
         <div className="text-sm font-bold">Describe the layout you want</div>
         <p className="mt-2 text-xs text-primary/55">Change the theme, reorder widgets, or adjust columns.</p>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -499,7 +704,7 @@ export default function DynamicDashboard() {
         )}
       </div>
 
-      <GeneratedUi document={uiDocument} density={dashboard.density} dashboardId={dashboard._id} dashboardWidgets={dashboard.widgets} />
+      <GeneratedUi document={uiDocument} density={dashboard.density} dashboardId={dashboard._id} dashboardWidgets={dashboard.widgets} searchQuery={widgetSearch} overview={overview} />
       <WorkspaceModelsPanel
         dashboard={dashboard}
         onTemplateApplied={(nextDashboard, nextUiDocument) => {

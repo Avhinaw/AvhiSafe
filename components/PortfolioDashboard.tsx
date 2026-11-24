@@ -16,6 +16,7 @@ import {
 import { readPublicIndex } from "@/lib/vault";
 import { readConnectedWallets } from "@/lib/connectedWallet";
 import { listServerWallets } from "@/lib/walletApi";
+import { loadDashboardPreference } from "@/lib/modelApi";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
@@ -74,9 +75,10 @@ interface PortfolioDashboardProps {
   // section-divider spacing and shrinks the hero heading so it doesn't
   // dominate a small card slot.
   embedded?: boolean;
+  dashboardId?: string;
 }
 
-export default function PortfolioDashboard({ embedded = false }: PortfolioDashboardProps) {
+export default function PortfolioDashboard({ embedded = false, dashboardId }: PortfolioDashboardProps) {
   const [addresses, setAddresses] = useState<PortfolioAddress[]>([]);
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [loading, setLoading] = useState(false);
@@ -86,6 +88,7 @@ export default function PortfolioDashboard({ embedded = false }: PortfolioDashbo
   const [selectedQr, setSelectedQr] = useState<PortfolioAddress | null>(null);
   const [tokenQuery, setTokenQuery] = useState("");
   const [history, setHistory] = useState<Array<{ timestamp: number; value: number }>>([]);
+  const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(300);
   const refreshRequest = useRef(0);
 
   const syncAddresses = useCallback(async () => {
@@ -139,6 +142,36 @@ export default function PortfolioDashboard({ embedded = false }: PortfolioDashbo
     if (addresses.length) refresh();
     else setSnapshots([]);
   }, [addresses, refresh]);
+
+  useEffect(() => {
+    if (!dashboardId) return;
+    let active = true;
+    const readPreference = () => {
+      void loadDashboardPreference(dashboardId).then(({ preference }) => {
+        if (active) setRefreshIntervalSeconds(preference?.refreshIntervalSeconds || 300);
+      }).catch(() => {
+        if (active) setRefreshIntervalSeconds(300);
+      });
+    };
+    const onPreferenceChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ dashboardId: string; refreshIntervalSeconds?: number }>).detail;
+      if (detail?.dashboardId === dashboardId && typeof detail.refreshIntervalSeconds === "number") {
+        setRefreshIntervalSeconds(detail.refreshIntervalSeconds);
+      }
+    };
+    readPreference();
+    window.addEventListener("avhisafe:dashboard-preference-updated", onPreferenceChanged);
+    return () => {
+      active = false;
+      window.removeEventListener("avhisafe:dashboard-preference-updated", onPreferenceChanged);
+    };
+  }, [dashboardId]);
+
+  useEffect(() => {
+    if (!addresses.length || refreshIntervalSeconds < 30) return;
+    const interval = window.setInterval(() => { void refresh(); }, refreshIntervalSeconds * 1000);
+    return () => window.clearInterval(interval);
+  }, [addresses.length, refresh, refreshIntervalSeconds]);
 
   const totalUsd = useMemo(() => snapshots.reduce((sum, snapshot) => sum + (snapshot.nativeValueUsd || 0) + snapshot.tokens.reduce((tokenSum, token) => tokenSum + (token.valueUsd || 0), 0), 0), [snapshots]);
 

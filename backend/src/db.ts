@@ -2,7 +2,16 @@ import { MongoClient, type Db } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { defaultWidgets } from "./widgetCatalog.js";
 import { defaultUiSpec, sanitizeUiSpec } from "./uiSchema.js";
-import type { AIRequestDocument, AuthNonceDocument, ConnectedWalletDocument, DashboardDocument, DashboardRevisionDocument, EncryptedVaultDocument, FeaturePermissionDocument, PortfolioSnapshotDocument, PublicAddressDocument, SessionDocument, UIDocument, UIRevisionDocument, UserDocument, WalletDocument } from "./models/index.js";
+import type {
+  AIEditHistoryDocument, AIRequestDocument, AIUsageDocument, AssetDocument, AssetPriceDocument,
+  AuditLogDocument, AuthNonceDocument, BlockchainNetworkDocument, ConnectedWalletDocument,
+  DashboardDocument, DashboardPreferenceDocument, DashboardRevisionDocument, DashboardTemplateDocument,
+  EncryptedVaultDocument, FeaturePermissionDocument, IntegrationDocument, NotificationDocument,
+  PortfolioSnapshotDocument, PublicAddressDocument, SecurityAlertDocument, SecurityCheckDocument,
+  SecurityScanDocument, SessionDocument, TokenBalanceDocument, TransactionDocument,
+  TransactionSyncDocument, UIDocument, UIRevisionDocument, UserDocument, WalletDocument,
+  WalletSyncDocument, WidgetDefinitionDocument,
+} from "./models/index.js";
 
 let client: MongoClient | undefined;
 let database: Db | undefined;
@@ -33,6 +42,24 @@ export const collections = {
   snapshots: async () => (await getDb()).collection<PortfolioSnapshotDocument>("portfolio_snapshots"),
   uiDocuments: async () => (await getDb()).collection<UIDocument>("ai_ui_documents"),
   uiRevisions: async () => (await getDb()).collection<UIRevisionDocument>("ai_ui_revisions"),
+  dashboardPreferences: async () => (await getDb()).collection<DashboardPreferenceDocument>("dashboard_preferences"),
+  dashboardTemplates: async () => (await getDb()).collection<DashboardTemplateDocument>("dashboard_templates"),
+  widgetDefinitions: async () => (await getDb()).collection<WidgetDefinitionDocument>("widget_definitions"),
+  networks: async () => (await getDb()).collection<BlockchainNetworkDocument>("blockchain_networks"),
+  assets: async () => (await getDb()).collection<AssetDocument>("assets"),
+  assetPrices: async () => (await getDb()).collection<AssetPriceDocument>("asset_prices"),
+  tokenBalances: async () => (await getDb()).collection<TokenBalanceDocument>("token_balances"),
+  transactions: async () => (await getDb()).collection<TransactionDocument>("transactions"),
+  walletSyncs: async () => (await getDb()).collection<WalletSyncDocument>("wallet_syncs"),
+  transactionSyncs: async () => (await getDb()).collection<TransactionSyncDocument>("transaction_syncs"),
+  securityScans: async () => (await getDb()).collection<SecurityScanDocument>("security_scans"),
+  securityChecks: async () => (await getDb()).collection<SecurityCheckDocument>("security_checks"),
+  securityAlerts: async () => (await getDb()).collection<SecurityAlertDocument>("security_alerts"),
+  notifications: async () => (await getDb()).collection<NotificationDocument>("notifications"),
+  integrations: async () => (await getDb()).collection<IntegrationDocument>("integrations"),
+  aiEdits: async () => (await getDb()).collection<AIEditHistoryDocument>("ai_edit_history"),
+  aiUsage: async () => (await getDb()).collection<AIUsageDocument>("ai_usage"),
+  auditLogs: async () => (await getDb()).collection<AuditLogDocument>("audit_logs"),
 };
 
 export async function findDefaultDashboard(userId: string) {

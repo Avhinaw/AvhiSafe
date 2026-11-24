@@ -12,6 +12,7 @@ import { Input } from "./ui/input";
 import { applyDashboardPlan, createDashboard, loadDashboard, loadWorkspace, planDashboard, undoDashboardUi, updateDashboard, type Dashboard, type DashboardPlan, type DashboardWidget, type UIComponent, type UIDocument, type UISpec } from "@/lib/dashboardApi";
 import { AiWorkspaceLoader } from "./ui/AiWorkspaceLoader";
 import { useAuth } from "./AuthProvider";
+import WorkspaceModelsPanel from "./WorkspaceModelsPanel";
 
 const accentClasses: Record<string, string> = {
   cyan: "border-cyan-500/30 bg-cyan-500/[0.04]",
@@ -61,9 +62,9 @@ function InsightWidget({ widgetType }: { widgetType: string }) {
   );
 }
 
-function RegisteredWidget({ widgetType }: { widgetType: string }) {
+function RegisteredWidget({ widgetType, dashboardId }: { widgetType: string; dashboardId: string }) {
   if (widgetType === "connected-wallets") return <ConnectedWallets />;
-  if (widgetType === "portfolio-value") return <PortfolioDashboard />;
+  if (widgetType === "portfolio-value") return <PortfolioDashboard dashboardId={dashboardId} />;
   if (widgetType === "security-score") return <SecurityCenter />;
   return <InsightWidget widgetType={widgetType} />;
 }
@@ -85,7 +86,7 @@ function SafeComponent({ children }: { children: React.ReactNode }) {
 //   was causing cards to render flush against each other with no gap
 const ITEM_WRAP_CLASS = "min-w-0 overflow-hidden break-inside-avoid block w-full mb-4";
 
-function GeneratedComponent({ component }: { component: UIComponent }) {
+function GeneratedComponent({ component, dashboardId }: { component: UIComponent; dashboardId: string }) {
   if (component.type === "widget") {
     // No border/bg on this wrapper — ConnectedWallets / PortfolioDashboard /
     // SecurityCenter already render their own card chrome internally.
@@ -102,7 +103,7 @@ function GeneratedComponent({ component }: { component: UIComponent }) {
           {component.title || component.widgetType.replaceAll("-", " ")}
         </div>
         <SafeComponent>
-          <RegisteredWidget widgetType={component.widgetType} />
+          <RegisteredWidget widgetType={component.widgetType} dashboardId={dashboardId} />
         </SafeComponent>
       </motion.div>
     );
@@ -170,7 +171,7 @@ function GeneratedComponent({ component }: { component: UIComponent }) {
   );
 }
 
-function GeneratedUi({ document, density }: { document: UIDocument; density: Dashboard["density"] }) {
+function GeneratedUi({ document, density, dashboardId }: { document: UIDocument; density: Dashboard["density"]; dashboardId: string }) {
   const spec = document.spec;
   const components = useMemo(() => {
     const base = spec.components || [];
@@ -214,7 +215,7 @@ function GeneratedUi({ document, density }: { document: UIDocument; density: Das
         <div style={columnStyle}>
           <AnimatePresence mode="popLayout">
             {components.map((component) => (
-              <GeneratedComponent key={component.id} component={component} />
+              <GeneratedComponent key={component.id} component={component} dashboardId={dashboardId} />
             ))}
           </AnimatePresence>
         </div>
@@ -222,7 +223,7 @@ function GeneratedUi({ document, density }: { document: UIDocument; density: Das
         <div className="flex flex-col gap-4">
           <AnimatePresence mode="popLayout">
             {components.map((component) => (
-              <GeneratedComponent key={component.id} component={component} />
+              <GeneratedComponent key={component.id} component={component} dashboardId={dashboardId} />
             ))}
           </AnimatePresence>
         </div>
@@ -420,7 +421,16 @@ export default function DynamicDashboard() {
         )}
       </div>
 
-      <GeneratedUi document={uiDocument} density={dashboard.density} />
+      <GeneratedUi document={uiDocument} density={dashboard.density} dashboardId={dashboard._id} />
+      <WorkspaceModelsPanel
+        dashboard={dashboard}
+        onTemplateApplied={(nextDashboard, nextUiDocument) => {
+          setDashboard(nextDashboard);
+          setDashboards((items) => items.map((item) => item._id === nextDashboard._id ? nextDashboard : item));
+          setUiDocument(nextUiDocument);
+          setPlan(null);
+        }}
+      />
     </section>
   );
 }

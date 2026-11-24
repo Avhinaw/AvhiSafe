@@ -70,6 +70,16 @@ Every user-owned document contains a `userId`. Dashboard reads and writes must a
 | `connected_wallets` | Public MetaMask/EVM and Solana wallet metadata |
 | `public_addresses` | Watch-only and generated public addresses |
 | `portfolio_snapshots` | Historical read-only portfolio values |
+| `assets`, `asset_prices`, `token_balances` | Normalized public asset metadata, price observations, and per-wallet balances |
+| `transactions` | Read-only transaction records indexed by wallet and network |
+| `wallet_syncs`, `transaction_syncs` | Provider refresh status and fetched-record counts |
+| `blockchain_networks`, `widget_definitions` | Enabled network and renderer catalogs |
+| `dashboard_preferences`, `dashboard_templates` | Per-dashboard refresh/display settings and reusable layouts |
+| `security_scans`, `security_checks`, `security_alerts` | Wallet-record validation runs and their user-owned results |
+| `notifications` | Per-user security and workspace inbox |
+| `ai_edit_history`, `ai_usage` | AI plan lifecycle and daily request counts (provider token/cost data is not fabricated) |
+| `integrations` | Read-only adapter metadata; no credentials or external adapters are accepted |
+| `audit_logs` | User actions on model-backed workspace features |
 | `ai_ui_documents` | Complete validated AI-generated UI document per user and dashboard |
 | `ai_ui_revisions` | Versioned AI UI documents for per-user undo/history |
 
@@ -89,6 +99,21 @@ Every user-owned document contains a `userId`. Dashboard reads and writes must a
 | `GET /api/v1/ai/status` | Report whether the server-side AI provider is configured without exposing credentials |
 | `POST /api/v1/ai/plan` | Send a natural-language request to the server-side model and return a complete validated UI document preview |
 | `POST /api/v1/ai/apply` | Persist an approved generated UI document for only that user and dashboard |
+| `GET /api/v1/catalog` | Load persisted widget definitions, enabled networks, and system/account dashboard templates |
+| `GET, PUT /api/v1/dashboards/:dashboardId/preferences` | Read and update preferences for an owned dashboard |
+| `POST /api/v1/dashboard-templates` | Save an owned dashboard layout as a reusable template |
+| `POST /api/v1/dashboard-templates/:templateId/apply` | Apply an owned or published system template, preserving the UI document |
+| `GET /api/v1/activity` | Read the current user’s stored balances, snapshots, transactions, and sync records |
+| `GET, POST /api/v1/security/scans` | Read results or run supported baseline wallet-record checks |
+| `PATCH /api/v1/security/alerts/:alertId` | Acknowledge, resolve, or dismiss an owned security alert |
+| `GET /api/v1/notifications` | Read the authenticated user’s notification inbox |
+| `PATCH /api/v1/notifications/:notificationId` | Mark an owned notification read or archived |
+| `GET /api/v1/ai/usage` | Read per-user AI request counts and edit history |
+| `GET /api/v1/profile/preferences` | Read account display and notification preferences |
+| `PUT /api/v1/profile/preferences` | Update account display and notification preferences |
+| `GET /api/v1/sessions` | List safe session metadata without token or fingerprint hashes |
+| `GET /api/v1/audit-logs` | Read recent workspace model actions for the authenticated user |
+| `GET /api/v1/integrations` | List safe integration metadata and report available adapters |
 
 ## Authentication and wallet routes
 
@@ -111,8 +136,10 @@ For local development, use `AUTH_DOMAIN=localhost:3000`, `AUTH_URI=http://localh
 
 All user-owned dashboard, AI, address, permission, and wallet routes use the `authenticate` middleware and derive the user ID exclusively from the verified HttpOnly session. The frontend does not send a client-supplied user ID. State-changing API requests with an `Origin` header are restricted to the configured CORS allowlist, authentication challenge/verification endpoints are rate-limited, and baseline security headers are applied globally.
 
+Portfolio provider responses are persisted only for wallets already owned by the authenticated account. Failed or unavailable provider responses update sync status but do not overwrite the last stored balances with zero values. Security baseline checks validate wallet-record address and network metadata only; they do not scan transactions, approvals, contracts, phishing, or on-chain risk. The integration catalog is intentionally read-only until real provider adapters and secure credential handling are implemented.
+
 The AI UI endpoint sends the prompt to a server-side model. The model returns a complete declarative UI document; the backend validates it with a strict Zod schema, previews it, and persists it only after explicit user approval. There is no keyword planner or client-side AI fallback. If the provider is unavailable, the UI reports the failure instead of pretending that an AI change happened. For the current Google provider configuration, set `AI_MODEL=gemini-3.6-flash`; older `gemini-2.5-flash` configurations are unavailable to new users.
 
 Generated UI is intentionally a safe declarative component document rather than executable JSX or JavaScript. The trusted renderer supports registered wallet/portfolio widgets, text, metrics, cards, status badges, short safety lists, dividers, bounded layouts, complete theme presets, typography presets, density presets, and bounded accent presets. A prompt can therefore request a complete dark or light theme, glass/soft/flat surfaces, compact or comfortable spacing, rounded or sharp cards, technical or editorial typography, widget additions/removals, data-view ordering, risk panels, review checklists, status callouts, and other small compositions built from registered primitives. Arbitrary model-generated code is never executed in the wallet application. Requests for transactions, signing, private-key access, backend queries, arbitrary plugins, or new executable functionality are rejected or returned as unsupported.
 
-AvhiSafe never sends private keys or recovery phrases to this backend or to the AI. Only dashboard configuration and public blockchain metadata belong in MongoDB.
+AvhiSafe never sends private keys or recovery phrases to this backend or to the AI. MongoDB stores account settings, dashboard configuration, and public-address portfolio/security metadata; encrypted vault bytes remain client-encrypted and are never decrypted by the backend.

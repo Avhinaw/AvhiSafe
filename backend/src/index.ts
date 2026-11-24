@@ -15,6 +15,7 @@ import { authRoutes } from "./routes/authRoutes.js";
 import { walletRoutes } from "./routes/walletRoutes.js";
 import { portfolioRoutes } from "./routes/portfolioRoutes.js";
 import { vaultRoutes } from "./routes/vaultRoutes.js";
+import { modelRoutes } from "./routes/modelRoutes.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { authenticatedUserId, trustedOriginMiddleware } from "./middleware/requestSecurity.js";
 import { securityHeaders } from "./middleware/security.js";
@@ -50,6 +51,7 @@ app.get("/api/v1/ai/status", (_request, response) => { const configured = Boolea
 app.use("/api/v1", authenticate);
 app.use("/api/v1", trustedOriginMiddleware(allowedOrigins));
 app.use("/api/v1/portfolio", portfolioRoutes);
+app.use("/api/v1", modelRoutes);
 app.get("/api/v1/admin/dashboard-analytics", requireRole("admin"), async (_request, response) => { try { const [users, dashboards, wallets] = await Promise.all([collections.users(), collections.dashboards(), collections.wallets()]); return response.json({ role: "admin", totals: { users: await users.countDocuments({ status: "active" }), dashboards: await dashboards.countDocuments(), wallets: await wallets.countDocuments({ status: { $ne: "removed" } }) } }); } catch (error) { return errorResponse(response, error, "Unable to load admin analytics.", 500); } });
 
 app.get("/api/v1/dashboards", async (request, response) => { try { return response.json({ dashboards: await listUserDashboards(authenticatedUserId(request)) }); } catch (error) { return errorResponse(response, error, "Unable to list dashboards.", 401); } });
@@ -63,8 +65,69 @@ app.delete("/api/v1/dashboards/:dashboardId", async (request, response) => { try
 app.get("/api/v1/dashboards/:dashboardId/revisions", async (request, response) => { try { const userId = authenticatedUserId(request); if (!(await findDashboardForUser(userId, request.params.dashboardId))) return response.status(404).json({ error: "Dashboard not found." }); return response.json({ revisions: await listUserRevisions(userId, request.params.dashboardId) }); } catch (error) { return errorResponse(response, error, "Unable to load revisions.", 401); } });
 app.post("/api/v1/dashboards/:dashboardId/undo", async (request, response) => { try { const userId = authenticatedUserId(request); const dashboard = await findDashboardForUser(userId, request.params.dashboardId); if (!dashboard) return response.status(404).json({ error: "Dashboard not found." }); const revisions = await listUserRevisions(userId, dashboard._id); const previous = revisions[1]; if (!previous) return response.status(409).json({ error: "No previous revision is available." }); const next = { ...dashboard, ...previous.snapshot, updatedAt: new Date() } as DashboardDocument; await (await collections.dashboards()).replaceOne({ _id: dashboard._id, userId }, next); const revision = await revisionFor(next, userId, "system", "Restored previous dashboard revision"); return response.json({ dashboard: next, revision }); } catch (error) { return errorResponse(response, error, "Unable to undo dashboard change.", 401); } });
 
-app.post("/api/v1/ai/plan", async (request, response) => { try { const userId = authenticatedUserId(request); const input = aiInput.parse(request.body); const dashboard = input.dashboardId ? await findDashboardForUser(userId, input.dashboardId) : await ensureDefaultDashboard(userId); if (!dashboard) return response.status(404).json({ error: "Dashboard not found." }); const currentUi = await ensureUIDocument(userId, dashboard._id); const plan = await planDashboardUi(input.prompt, dashboard, currentUi.spec); const requestDocument = { _id: randomUUID(), userId, dashboardId: dashboard._id, prompt: input.prompt, intent: plan.intent, status: "planned" as const, response: plan as unknown as Record<string, unknown>, createdAt: new Date() }; await (await collections.aiRequests()).insertOne(requestDocument); return response.status(201).json({ request: requestDocument, plan }); } catch (error) { return errorResponse(response, error, "Unable to create AI UI plan.", error instanceof Error && error.message.includes("Authentication") ? 401 : 400); } });
-app.post("/api/v1/ai/apply", async (request, response) => { try { const userId = authenticatedUserId(request); const input = aiApplyInput.parse(request.body); const dashboard = await findDashboardForUser(userId, input.dashboardId); if (!dashboard) return response.status(404).json({ error: "Dashboard not found." }); if (input.plan.intent !== "customize_ui") return response.status(422).json({ error: "This AI request did not produce an applicable UI change." }); const sanitizeResult = safeSanitizeUiSpec(input.plan.ui); const spec = sanitizeResult.spec; const document = await saveUiForUser(userId, dashboard._id, spec, "ai", input.prompt); const revision = await uiRevisionFor(document, userId, "ai", input.plan.explanation, input.prompt); await (await collections.aiRequests()).updateOne({ userId, dashboardId: dashboard._id, prompt: input.prompt }, { $set: { status: "applied", response: { ...input.plan, ui: spec } as unknown as Record<string, unknown>, completedAt: new Date() } }); return response.json({ dashboard, uiDocument: document, revision, plan: { ...input.plan, ui: spec } }); } catch (error) { return errorResponse(response, error, "Unable to apply AI UI plan.", error instanceof Error && error.message.includes("Authentication") ? 401 : 400); } });
+app.post("/api/v1/ai/plan", async (request, response) => {
+  try {
+    const userId = authenticatedUserId(request);
+    const input = aiInput.parse(request.body);
+    const dashboard = input.dashboardId ? await findDashboardForUser(userId, input.dashboardId) : await ensureDefaultDashboard(userId);
+    if (!dashboard) return response.status(404).json({ error: "Dashboard not found." });
+    const currentUi = await ensureUIDocument(userId, dashboard._id);
+    const plan = await planDashboardUi(input.prompt, dashboard, currentUi.spec);
+    const now = new Date();
+    const requestId = randomUUID();
+    const requestDocument = { _id: requestId, userId, dashboardId: dashboard._id, prompt: input.prompt, intent: plan.intent, status: "planned" as const, response: plan as unknown as Record<string, unknown>, createdAt: now };
+    const model = plan.model || process.env.AI_MODEL || "unknown";
+    const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const periodEnd = new Date(periodStart.getTime() + 24 * 60 * 60 * 1000);
+    await Promise.all([
+      (await collections.aiRequests()).insertOne(requestDocument),
+      (await collections.aiEdits()).insertOne({
+        _id: requestId, userId, dashboardId: dashboard._id, prompt: input.prompt, model,
+        provider: "configured-provider",
+        inputVersion: currentUi.version, outputSummary: plan.explanation,
+        operations: plan.ui?.components.map((component) => component as unknown as Record<string, unknown>) || [],
+        status: plan.intent === "unsupported" ? "rejected" : "planned",
+        warnings: plan.warnings, requiresConfirmation: plan.requiresApproval, createdAt: now,
+      }),
+      (await collections.aiUsage()).updateOne(
+        { userId, periodStart, model },
+        { $inc: { requestCount: 1, ...(plan.intent === "customize_ui" && plan.requiresApproval ? { successfulRequestCount: 1 } : { failedRequestCount: 1 }) }, $set: { periodEnd, updatedAt: now }, $setOnInsert: { _id: `${userId}:${periodStart.toISOString()}:${model}`, userId, periodStart, model, currency: "USD" } },
+        { upsert: true },
+      ),
+    ]);
+    return response.status(201).json({ request: requestDocument, plan: { ...plan, requestId } });
+  } catch (error) {
+    return errorResponse(response, error, "Unable to create AI UI plan.", error instanceof Error && error.message.includes("Authentication") ? 401 : 400);
+  }
+});
+app.post("/api/v1/ai/apply", async (request, response) => {
+  try {
+    const userId = authenticatedUserId(request);
+    const input = aiApplyInput.parse(request.body);
+    const dashboard = await findDashboardForUser(userId, input.dashboardId);
+    if (!dashboard) return response.status(404).json({ error: "Dashboard not found." });
+    if (input.plan.intent !== "customize_ui") return response.status(422).json({ error: "This AI request did not produce an applicable UI change." });
+    const spec = safeSanitizeUiSpec(input.plan.ui).spec;
+    const document = await saveUiForUser(userId, dashboard._id, spec, "ai", input.prompt);
+    const revision = await uiRevisionFor(document, userId, "ai", input.plan.explanation, input.prompt);
+    const completedAt = new Date();
+    await Promise.all([
+      (await collections.aiRequests()).updateOne(
+        { userId, dashboardId: dashboard._id, prompt: input.prompt, status: "planned" },
+        { $set: { status: "applied", response: { ...input.plan, ui: spec } as unknown as Record<string, unknown>, completedAt } },
+      ),
+      (await collections.aiEdits()).updateOne(
+        input.plan.requestId
+          ? { _id: input.plan.requestId, userId, dashboardId: dashboard._id }
+          : { userId, dashboardId: dashboard._id, prompt: input.prompt, status: "planned" },
+        { $set: { status: "applied", appliedVersion: document.version, completedAt } },
+      ),
+    ]);
+    return response.json({ dashboard, uiDocument: document, revision, plan: { ...input.plan, ui: spec } });
+  } catch (error) {
+    return errorResponse(response, error, "Unable to apply AI UI plan.", error instanceof Error && error.message.includes("Authentication") ? 401 : 400);
+  }
+});
 app.get("/api/v1/dashboards/:dashboardId/ui-revisions", async (request, response) => { try { const userId = authenticatedUserId(request); if (!(await findDashboardForUser(userId, request.params.dashboardId))) return response.status(404).json({ error: "Dashboard not found." }); return response.json({ revisions: await listUIRevisions(userId, request.params.dashboardId) }); } catch (error) { return errorResponse(response, error, "Unable to load UI revisions.", 401); } });
 app.post("/api/v1/dashboards/:dashboardId/ui-undo", async (request, response) => { try { const userId = authenticatedUserId(request); const dashboard = await findDashboardForUser(userId, request.params.dashboardId); if (!dashboard) return response.status(404).json({ error: "Dashboard not found." }); const revisions = await listUIRevisions(userId, dashboard._id); const previous = revisions[1]; if (!previous) return response.status(409).json({ error: "No previous UI revision is available." }); const document = await saveUiForUser(userId, dashboard._id, previous.spec, "system", "Undo AI UI change"); const revision = await uiRevisionFor(document, userId, "system", "Restored previous AI UI revision"); return response.json({ dashboard, uiDocument: document, revision }); } catch (error) { return errorResponse(response, error, "Unable to undo AI UI change.", 401); } });
 

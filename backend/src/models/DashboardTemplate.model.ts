@@ -1,4 +1,5 @@
 import type { DashboardWidget } from "./Dashboard.model.js";
+import type { UISpec } from "../uiSchema.js";
 
 export interface DashboardTemplateDocument {
   _id: string;
@@ -9,6 +10,7 @@ export interface DashboardTemplateDocument {
   schemaVersion: number;
   theme?: string;
   widgets: DashboardWidget[];
+  uiSpec?: UISpec;
   isSystem: boolean;
   isPublished?: boolean;
   createdAt: Date;

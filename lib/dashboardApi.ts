@@ -9,7 +9,7 @@ export type UIComponent =
   | { type: "card"; id: string; title?: string; tone?: "neutral" | "accent" | "success" | "warning" | "info" | "danger"; text?: string; body?: string; content?: string; description?: string; severity?: "low" | "medium" | "high"; width?: DashboardWidget["width"] };
 export type UISpec = { version: 1; title: string; description: string; accentPreset: "cyan" | "violet" | "emerald" | "amber" | "rose" | "slate"; layout: "stack" | "grid"; columns: number; components: UIComponent[] };
 export type UIDocument = { _id: string; userId: string; dashboardId: string; version: number; source: "ai" | "system"; prompt?: string; spec: UISpec; createdAt: string; updatedAt: string };
-export type DashboardPlan = { intent: "customize_ui" | "unsupported"; explanation: string; warnings: string[]; requiresApproval: boolean; ui: UISpec | null; source: "ai"; model?: string };
+export type DashboardPlan = { intent: "customize_ui" | "unsupported"; explanation: string; warnings: string[]; requiresApproval: boolean; ui: UISpec | null; source: "ai"; model?: string; requestId?: string };
 
 const FRIENDLY_ERRORS: Record<string, string> = {
   "Failed to fetch": "Unable to connect to the backend. Please check your internet connection.",

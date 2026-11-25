@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { allowedWidgetTypes } from "./widgetCatalog.js";
+import type { DashboardOperation } from "./widgetCatalog.js";
 
 const safeId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/);
 const safeText = z.string().trim().max(240);
@@ -225,6 +226,8 @@ export type UIPlan = {
   warnings: string[];
   requiresApproval: boolean;
   ui: UISpec | null;
+  operations: DashboardOperation[];
+  expectedVersion?: number;
   source: "ai";
   model?: string;
 };

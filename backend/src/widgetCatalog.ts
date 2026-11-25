@@ -17,14 +17,14 @@ export type WidgetType = (typeof widgetCatalog)[number]["type"];
 export const allowedWidgetTypes = new Set<string>(widgetCatalog.map((widget) => widget.type));
 
 export type DashboardOperation =
+  | { type: "set_dashboard_name"; value: string }
   | { type: "enable_widget"; widgetType: string; title?: string; width?: WidgetWidth }
   | { type: "disable_widget"; widgetType: string }
   | { type: "move_widget"; widgetType: string; position: number }
   | { type: "resize_widget"; widgetType: string; width: WidgetWidth }
+  | { type: "rename_widget"; widgetType: string; title: string }
   | { type: "set_theme"; value: "light" | "dark" | "system" }
-  | { type: "set_currency"; value: string }
-  | { type: "set_density"; value: "comfortable" | "compact" | "analytics" }
-  | { type: "set_filter"; key: string; value: unknown };
+  | { type: "set_density"; value: "comfortable" | "compact" | "analytics" };
 
 export interface DashboardPlan {
   intent: "customize_dashboard" | "unsupported";

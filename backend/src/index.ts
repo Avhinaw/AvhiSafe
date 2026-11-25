@@ -6,7 +6,7 @@ import { z } from "zod";
 import { aiApplyInput } from "./aiApplySchema.js";
 import { collections, createDashboardRevision, ensureDefaultDashboard, ensureUIDocument, findDashboardForUser, findUIDocumentForUser, findDefaultDashboard, listUserDashboards, listUserPermissions, listUserPublicAddresses, listUserRevisions, listUIRevisions, listUserWallets, pingDatabase } from "./db.js";
 import { planDashboardUi } from "./aiUiPlanner.js";
-import { safeSanitizeUiSpec } from "./uiSchema.js";
+import { sanitizeUiSpec } from "./uiSchema.js";
 import { saveUiForUser, uiRevisionFor } from "./uiService.js";
 import { applyOperations, revisionFor } from "./dashboardService.js";
 import { allowedWidgetTypes, defaultWidgets } from "./widgetCatalog.js";
@@ -89,7 +89,10 @@ app.post("/api/v1/ai/plan", async (request, response) => {
         _id: requestId, userId, dashboardId: dashboard._id, prompt: input.prompt, model,
         provider: "configured-provider",
         inputVersion: currentUi.version, outputSummary: plan.explanation,
-        operations: plan.ui?.components.map((component) => component as unknown as Record<string, unknown>) || [],
+        operations: [
+          ...plan.operations.map((operation) => ({ kind: "dashboard", ...operation })),
+          ...(plan.ui?.components.map((component) => ({ kind: "ui_component", ...component })) || []),
+        ],
         status: plan.intent === "unsupported" ? "rejected" : "planned",
         warnings: plan.warnings, requiresConfirmation: plan.requiresApproval, createdAt: now,
       }),
@@ -111,7 +114,18 @@ app.post("/api/v1/ai/apply", async (request, response) => {
     const dashboard = await findDashboardForUser(userId, input.dashboardId);
     if (!dashboard) return response.status(404).json({ error: "Dashboard not found." });
     if (input.plan.intent !== "customize_ui") return response.status(422).json({ error: "This AI request did not produce an applicable UI change." });
-    const spec = safeSanitizeUiSpec(input.plan.ui).spec;
+    if (!input.plan.requiresApproval) return response.status(422).json({ error: "This AI plan is not marked for approval." });
+    const currentVersion = dashboard.version ?? 1;
+    if (input.plan.expectedVersion !== currentVersion) return response.status(409).json({ error: "Dashboard changed after this plan was generated. Generate a fresh plan before applying.", code: "DASHBOARD_VERSION_CONFLICT", currentVersion });
+    const spec = sanitizeUiSpec(input.plan.ui);
+    const applied = applyOperations(dashboard, input.plan.operations);
+    const updatedDashboard: DashboardDocument = { ...applied, version: currentVersion + 1, updatedAt: new Date() };
+    const write = await (await collections.dashboards()).replaceOne(
+      { _id: dashboard._id, userId, $or: [{ version: currentVersion }, { version: { $exists: false } }] },
+      updatedDashboard,
+    );
+    if (write.matchedCount !== 1) return response.status(409).json({ error: "Dashboard changed in another session. Reload and generate a fresh plan.", code: "DASHBOARD_VERSION_CONFLICT", currentVersion });
+    await revisionFor(updatedDashboard, userId, "ai", input.plan.explanation, input.prompt, updatedDashboard.updatedAt);
     const document = await saveUiForUser(userId, dashboard._id, spec, "ai", input.prompt);
     const revision = await uiRevisionFor(document, userId, "ai", input.plan.explanation, input.prompt);
     const completedAt = new Date();
@@ -127,7 +141,7 @@ app.post("/api/v1/ai/apply", async (request, response) => {
         { $set: { status: "applied", appliedVersion: document.version, completedAt } },
       ),
     ]);
-    return response.json({ dashboard, uiDocument: document, revision, plan: { ...input.plan, ui: spec } });
+    return response.json({ dashboard: updatedDashboard, uiDocument: document, revision, plan: { ...input.plan, ui: spec } });
   } catch (error) {
     return errorResponse(response, error, "Unable to apply AI UI plan.", error instanceof Error && error.message.includes("Authentication") ? 401 : 400);
   }

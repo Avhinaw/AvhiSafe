@@ -2,6 +2,7 @@ import "dotenv/config";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
+import { MongoServerError } from "mongodb";
 import { z } from "zod";
 import { aiApplyInput } from "./aiApplySchema.js";
 import { collections, createDashboardRevision, ensureDefaultDashboard, ensureUIDocument, findDashboardForUser, findUIDocumentForUser, findDefaultDashboard, listUserDashboards, listUserPermissions, listUserPublicAddresses, listUserRevisions, listUIRevisions, listUserWallets, pingDatabase } from "./db.js";
@@ -59,7 +60,25 @@ app.use("/api/v1/security", securityRoutes);
 app.get("/api/v1/admin/dashboard-analytics", requireRole("admin"), async (_request, response) => { try { const [users, dashboards, wallets] = await Promise.all([collections.users(), collections.dashboards(), collections.wallets()]); return response.json({ role: "admin", totals: { users: await users.countDocuments({ status: "active" }), dashboards: await dashboards.countDocuments(), wallets: await wallets.countDocuments({ status: { $ne: "removed" } }) } }); } catch (error) { return errorResponse(response, error, "Unable to load admin analytics.", 500); } });
 
 app.get("/api/v1/dashboards", async (request, response) => { try { return response.json({ dashboards: await listUserDashboards(authenticatedUserId(request)) }); } catch (error) { return errorResponse(response, error, "Unable to list dashboards.", 401); } });
-app.post("/api/v1/dashboards", async (request, response) => { try { const userId = authenticatedUserId(request); const input = dashboardInput.parse(request.body); const now = new Date(); const dashboard: DashboardDocument = { _id: randomUUID(), userId, ...input, widgets: input.widgets.length ? input.widgets : defaultWidgets(), version: 1, createdAt: now, updatedAt: now }; const dashboards = await collections.dashboards(); if (dashboard.isDefault) await dashboards.updateMany({ userId }, { $set: { isDefault: false, updatedAt: now } }); await dashboards.insertOne(dashboard); await revisionFor(dashboard, userId, "system", "Created dashboard", undefined, now); const uiDocument = await ensureUIDocument(userId, dashboard._id); return response.status(201).json({ dashboard, uiDocument }); } catch (error) { return errorResponse(response, error, "Invalid dashboard."); } });
+app.post("/api/v1/dashboards", async (request, response) => {
+  try {
+    const userId = authenticatedUserId(request);
+    const input = dashboardInput.parse(request.body);
+    const now = new Date();
+    const dashboard: DashboardDocument = { _id: randomUUID(), userId, ...input, widgets: input.widgets.length ? input.widgets : defaultWidgets(), version: 1, createdAt: now, updatedAt: now };
+    const dashboards = await collections.dashboards();
+    if (dashboard.isDefault) await dashboards.updateMany({ userId }, { $set: { isDefault: false, updatedAt: now } });
+    await dashboards.insertOne(dashboard);
+    await revisionFor(dashboard, userId, "system", "Created dashboard", undefined, now);
+    const uiDocument = await ensureUIDocument(userId, dashboard._id);
+    return response.status(201).json({ dashboard, uiDocument });
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) {
+      return response.status(409).json({ error: "A dashboard with that slug already exists for this account.", code: "DASHBOARD_SLUG_CONFLICT" });
+    }
+    return errorResponse(response, error, "Invalid dashboard.");
+  }
+});
 
 app.get("/api/v1/workspace", async (request, response) => { try { const userId = authenticatedUserId(request); const dashboard = await ensureDefaultDashboard(userId); const uiDocument = await ensureUIDocument(userId, dashboard._id); const [dashboards, revisions, uiRevisions, addresses, wallets, permissions] = await Promise.all([listUserDashboards(userId), listUserRevisions(userId, dashboard._id), listUIRevisions(userId, dashboard._id), listUserPublicAddresses(userId), listUserWallets(userId), listUserPermissions(userId)]); return response.json({ dashboard, uiDocument, dashboards, revisions, uiRevisions, addresses, wallets, permissions }); } catch (error) { return errorResponse(response, error, "Unable to load workspace.", 401); } });
 

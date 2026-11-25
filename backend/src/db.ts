@@ -1,4 +1,4 @@
-import { MongoClient, type Db } from "mongodb";
+import { MongoClient, MongoServerError, type Db } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { defaultWidgets } from "./widgetCatalog.js";
 import { defaultUiSpec, sanitizeUiSpec } from "./uiSchema.js";
@@ -78,8 +78,26 @@ export async function ensureDefaultDashboard(userId: string): Promise<DashboardD
     widgets: defaultWidgets(), filters: {}, version: 1, createdAt: now, updatedAt: now,
   };
   const dashboards = await collections.dashboards();
-  await dashboards.updateOne({ userId, isDefault: true }, { $setOnInsert: dashboard }, { upsert: true });
-  const saved = (await findDefaultDashboard(userId)) || dashboard;
+  try {
+    await dashboards.updateOne({ userId, isDefault: true }, { $setOnInsert: dashboard }, { upsert: true });
+  } catch (error) {
+    if (!(error instanceof MongoServerError) || error.code !== 11000) throw error;
+
+    const concurrentDefault = await findDefaultDashboard(userId);
+    if (concurrentDefault) {
+      await ensureUIDocument(userId, concurrentDefault._id);
+      return concurrentDefault;
+    }
+
+    const existingMain = await dashboards.findOne({ userId, slug: "main" });
+    if (!existingMain) throw error;
+    await dashboards.updateOne(
+      { _id: existingMain._id, userId, isDefault: { $ne: true } },
+      { $set: { isDefault: true, updatedAt: now } },
+    );
+  }
+  const saved = await findDefaultDashboard(userId);
+  if (!saved) throw new Error("Unable to create or locate the user's default dashboard.");
   await ensureUIDocument(userId, saved._id);
   return saved;
 }

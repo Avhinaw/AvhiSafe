@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTheme } from "next-themes";
 import { Activity, ArrowUpRight, BarChart3, Bell, CircleDollarSign, Clock3, Gauge, LayoutDashboard, RotateCcw, Wand2, Check, AlertTriangle, Loader2, RefreshCw, Search, Settings2, ShieldAlert, ShieldCheck, Sparkles, Wallet, Waves, Plus, Trash2, GripVertical, Eye, EyeOff, ChevronUp, ChevronDown, Save } from "lucide-react";
 import { toast } from "sonner";
 import ConnectedWallets from "./ConnectedWallets";
@@ -9,7 +10,7 @@ import PortfolioDashboard from "./PortfolioDashboard";
 import SecurityCenter from "./SecurityCenter";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { applyDashboardPlan, createDashboard, loadDashboard, loadWorkspace, planDashboard, undoDashboardUi, updateDashboard, type Dashboard, type DashboardPlan, type DashboardWidget, type UIComponent, type UIDocument, type UISpec } from "@/lib/dashboardApi";
+import { applyDashboardPlan, createDashboard, loadDashboard, loadWorkspace, planDashboard, undoDashboardUi, updateDashboard, type Dashboard, type DashboardOperation, type DashboardPlan, type DashboardWidget, type UIComponent, type UIDocument, type UISpec } from "@/lib/dashboardApi";
 import { AiWorkspaceLoader } from "./ui/AiWorkspaceLoader";
 import { useAuth } from "./AuthProvider";
 import WorkspaceModelsPanel from "./WorkspaceModelsPanel";
@@ -27,12 +28,23 @@ const accentClasses: Record<string, string> = {
 };
 
 const PROMPT_SUGGESTIONS = [
-  "Minimal single-column dashboard with just portfolio and security",
-  "Analytics-focused 3-column grid with all metrics and risk summary",
-  "Dark risk-focused dashboard with security first and emerald accent",
-  "Compact two-column layout with portfolio history and connected wallets",
-  "Show everything — all widgets in a 2-column grid with violet theme",
+  "Create a compact security workspace: dark theme, security first, hide DeFi and NFTs",
+  "Rename this dashboard to Portfolio Overview, use analytics density, and show all available widgets",
+  "Move portfolio history under the portfolio card, make security full width, and use an emerald accent",
+  "Make a simple light dashboard with only portfolio, connected wallets, and recent activity",
+  "Use a 3-column analytics grid and rename token holdings to Asset allocation",
 ];
+
+function describeOperation(operation: DashboardOperation) {
+  if (operation.type === "set_dashboard_name") return `Rename dashboard to “${operation.value}”`;
+  if (operation.type === "set_theme") return `Set theme to ${operation.value}`;
+  if (operation.type === "set_density") return `Set density to ${operation.value}`;
+  if (operation.type === "enable_widget") return `Show ${operation.title || operation.widgetType.replaceAll("-", " ")}${operation.width ? ` at ${operation.width} width` : ""}`;
+  if (operation.type === "disable_widget") return `Hide ${operation.widgetType.replaceAll("-", " ")}`;
+  if (operation.type === "move_widget") return `Move ${operation.widgetType.replaceAll("-", " ")} to position ${operation.position + 1}`;
+  if (operation.type === "resize_widget") return `Resize ${operation.widgetType.replaceAll("-", " ")} to ${operation.width}`;
+  return `Rename ${operation.widgetType.replaceAll("-", " ")} to “${operation.title}”`;
+}
 
 function DashboardKpi({ icon: Icon, label, value, detail, tone }: { icon: typeof Activity; label: string; value: string; detail: string; tone: string }) {
   return <motion.div whileHover={{ y: -3 }} className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.07] p-4 text-white backdrop-blur-xl transition-all duration-300 hover:border-white/25 hover:bg-white/[0.12]"><div className={`mb-5 flex size-9 items-center justify-center rounded-xl ${tone}`}><Icon className="size-4" /></div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">{label}</p><p className="mt-1 text-xl font-black tracking-tight">{value}</p><p className="mt-1 text-xs text-white/45">{detail}</p><div className="absolute -bottom-8 -right-5 size-20 rounded-full bg-white/10 blur-2xl transition-transform duration-500 group-hover:scale-150" /></motion.div>;
@@ -279,16 +291,19 @@ function SafeComponent({ children }: { children: React.ReactNode }) {
   }
 }
 
-// Shared layout guards applied to every generated component:
-// - min-w-0 + overflow-hidden: stop intrinsic-width children (charts, long strings)
-//   from bursting out of their CSS-column and visually overlapping the next item
-// - break-inside-avoid: stop a single card from being split top/bottom across columns
-// - block + w-full + mb-4: MUST be `block` not `inline-block` — inline-block margins
-//   don't reliably reserve vertical space in a multi-column layout, which is what
-//   was causing cards to render flush against each other with no gap
-const ITEM_WRAP_CLASS = "min-w-0 overflow-hidden break-inside-avoid block w-full mb-4";
+const ITEM_WRAP_CLASS = "min-w-0 overflow-hidden block w-full";
 
-function GeneratedComponent({ component, dashboardId, overview }: { component: UIComponent; dashboardId: string; overview: OverviewData | null }) {
+function GeneratedComponent({ component, dashboardId, overview, columns, gridLayout }: { component: UIComponent; dashboardId: string; overview: OverviewData | null; columns: number; gridLayout: boolean }) {
+  const width = component.type === "widget" || component.type === "card" ? component.width : undefined;
+  const widthClass = !gridLayout
+    ? "col-span-1"
+    : width === "full" || component.type === "text"
+      ? "col-span-full"
+      : width === "large" && columns > 1
+        ? "col-span-1 sm:col-span-2"
+        : width === "small"
+          ? "col-span-1 max-w-sm"
+          : "col-span-1";
   if (component.type === "widget") {
     // No border/bg on this wrapper — ConnectedWallets / PortfolioDashboard /
     // SecurityCenter already render their own card chrome internally.
@@ -299,7 +314,7 @@ function GeneratedComponent({ component, dashboardId, overview }: { component: U
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -12 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
-        className={`${ITEM_WRAP_CLASS} transition-transform duration-300 hover:translate-y-[-2px]`}
+        className={`${ITEM_WRAP_CLASS} ${widthClass} transition-transform duration-300 hover:translate-y-[-2px]`}
         data-dashboard-widget={component.widgetType}
       >
         <div className="mb-2 px-1 text-xs font-bold uppercase tracking-wider text-primary/45">
@@ -323,7 +338,7 @@ function GeneratedComponent({ component, dashboardId, overview }: { component: U
         className={
           (emphasis === "strong" ? "text-lg font-bold"
           : emphasis === "muted" ? "text-sm text-primary/60"
-          : "text-sm") + ` ${ITEM_WRAP_CLASS}`
+          : "text-sm")           + ` ${ITEM_WRAP_CLASS} ${widthClass}`
         }
       >
         {component.text}
@@ -340,7 +355,7 @@ function GeneratedComponent({ component, dashboardId, overview }: { component: U
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.25 }}
-        className={`rounded-2xl border border-primary/10 bg-background/60 p-5 ${ITEM_WRAP_CLASS}`}
+        className={`rounded-2xl border border-primary/10 bg-background/60 p-5 ${ITEM_WRAP_CLASS} ${widthClass}`}
       >
         <p className="text-xs font-bold uppercase tracking-wider text-primary/50">{component.label}</p>
         <p className="mt-3 text-sm text-primary/65">{source.replaceAll("-", " ")}</p>
@@ -366,7 +381,7 @@ function GeneratedComponent({ component, dashboardId, overview }: { component: U
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
       transition={{ duration: 0.25 }}
-      className={`rounded-2xl border p-5 ${toneClass} ${ITEM_WRAP_CLASS}`}
+      className={`rounded-2xl border p-5 ${toneClass} ${ITEM_WRAP_CLASS} ${widthClass}`}
     >
       {component.title && <p className="font-semibold">{component.title}</p>}
       {cardText && <p className="mt-2 text-sm text-primary/65">{cardText}</p>}
@@ -405,18 +420,13 @@ function GeneratedUi({ document, density, dashboardId, dashboardWidgets, searchQ
   const accent = accentClasses[spec.accentPreset] || accentClasses.cyan;
   const columns = density === "analytics" ? Math.max(2, Math.min(4, Number(spec.columns) || 3)) : Math.max(1, Math.min(4, Number(spec.columns) || 2));
 
-  // Masonry via CSS multi-column layout instead of CSS grid.
-  // Grid advances every column in lockstep row-by-row, so a tall widget in
-  // col 1 leaves a permanent dead zone next to a short widget in col 2.
-  // CSS columns flow each item into whichever column is currently shortest,
-  // closing that gap automatically without hardcoding row/col spans per widget.
-  const columnStyle =
-    spec.layout === "grid"
-      ? ({
-          columnCount: columns,
-          columnGap: "1rem",
-        } as React.CSSProperties)
-      : undefined;
+  const columnClass = columns === 1
+    ? "grid-cols-1"
+    : columns === 2
+      ? "grid-cols-1 sm:grid-cols-2"
+      : columns === 3
+        ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
+        : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4";
 
   return (
     <motion.div
@@ -434,19 +444,19 @@ function GeneratedUi({ document, density, dashboardId, dashboardWidgets, searchQ
       </div>
 
       {spec.layout === "grid" ? (
-        <div style={columnStyle}>
+        <div className={`grid gap-4 ${columnClass}`}>
           <AnimatePresence mode="popLayout">
             {components.map((component) => (
-              <GeneratedComponent key={component.id} component={component} dashboardId={dashboardId} overview={overview} />
+              <GeneratedComponent key={component.id} component={component} dashboardId={dashboardId} overview={overview} columns={columns} gridLayout />
             ))}
           </AnimatePresence>
-          {searchQuery.trim() && components.length === 0 && <p className="rounded-xl border border-dashed border-primary/15 p-6 text-center text-sm text-primary/55">No widgets match “{searchQuery}”. Clear the search to see your full workspace.</p>}
+          {searchQuery.trim() && components.length === 0 && <p className="col-span-full rounded-xl border border-dashed border-primary/15 p-6 text-center text-sm text-primary/55">No widgets match “{searchQuery}”. Clear the search to see your full workspace.</p>}
         </div>
       ) : (
         <div className="flex flex-col gap-4">
           <AnimatePresence mode="popLayout">
             {components.map((component) => (
-              <GeneratedComponent key={component.id} component={component} dashboardId={dashboardId} overview={overview} />
+              <GeneratedComponent key={component.id} component={component} dashboardId={dashboardId} overview={overview} columns={1} gridLayout={false} />
             ))}
           </AnimatePresence>
           {searchQuery.trim() && components.length === 0 && <p className="rounded-xl border border-dashed border-primary/15 p-6 text-center text-sm text-primary/55">No widgets match “{searchQuery}”. Clear the search to see your full workspace.</p>}
@@ -458,10 +468,12 @@ function GeneratedUi({ document, density, dashboardId, dashboardWidgets, searchQ
 
 export default function DynamicDashboard() {
   const { user, loading: authLoading } = useAuth();
+  const { setTheme } = useTheme();
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [uiDocument, setUiDocument] = useState<UIDocument | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [plannedPrompt, setPlannedPrompt] = useState("");
   const [plan, setPlan] = useState<DashboardPlan | null>(null);
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -474,16 +486,20 @@ export default function DynamicDashboard() {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const dashboardRef = useRef(dashboard);
+  dashboardRef.current = dashboard;
 
   useEffect(() => {
     if (editing) editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [editing]);
 
-  const persistWidgets = async (widgets: DashboardWidget[]) => {
-    if (!dashboard) return;
+  const persistWidgets = useCallback(async (widgets: DashboardWidget[]) => {
+    const currentDashboard = dashboardRef.current;
+    if (!currentDashboard) return;
     setSaveState("saving");
     try {
-      const result = await updateDashboard(dashboard._id, { widgets: normalizeWidgets(widgets), expectedVersion: dashboard.version ?? 1, revisionSummary: "Edited dashboard widgets" });
+      const result = await updateDashboard(currentDashboard._id, { widgets: normalizeWidgets(widgets), expectedVersion: currentDashboard.version ?? 1, revisionSummary: "Edited dashboard widgets" });
+      if (dashboardRef.current?._id !== result.dashboard._id) return;
       setDashboard(result.dashboard);
       setDashboards((items) => items.map((item) => item._id === result.dashboard._id ? result.dashboard : item));
       setSaveState("saved");
@@ -491,22 +507,23 @@ export default function DynamicDashboard() {
       setSaveState("error");
       toast.error(error instanceof Error ? error.message : "Couldn't save widget changes.");
     }
-  };
+  }, []);
 
-  useEffect(() => { if (dashboard) setDraftWidgets(normalizeWidgets(dashboard.widgets)); }, [dashboard?._id]);
   useEffect(() => {
-    if (!editing || !dashboard) return;
+    if (!editing || !dashboardRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => void persistWidgets(draftWidgets), 700);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [draftWidgets, editing]);
+  }, [draftWidgets, editing, persistWidgets]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setBackendError(null);
     try {
       const data = await loadWorkspace();
       setDashboard(data.dashboard);
+      setDraftWidgets(normalizeWidgets(data.dashboard.widgets));
+      setTheme(data.dashboard.theme);
       setDashboards(data.dashboards);
       setUiDocument(data.uiDocument);
     } catch (error) {
@@ -514,17 +531,20 @@ export default function DynamicDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setTheme]);
 
-  useEffect(() => { if (user) void load(); else setLoading(false); }, [user]);
+  useEffect(() => { if (user) void load(); else setLoading(false); }, [load, user]);
 
   const selectDashboard = async (id: string) => {
     if (!id || id === dashboard?._id) return;
     try {
       const result = await loadDashboard(id);
       setDashboard(result.dashboard);
+      setDraftWidgets(normalizeWidgets(result.dashboard.widgets));
+      setTheme(result.dashboard.theme);
       setUiDocument(result.uiDocument);
       setPlan(null);
+      setPlannedPrompt("");
       setEditing(false);
     } catch (error) { toast.error(error instanceof Error ? error.message : "Couldn't load that dashboard."); }
   };
@@ -534,6 +554,7 @@ export default function DynamicDashboard() {
     try {
       const result = await updateDashboard(dashboard._id, { ...patch, expectedVersion: dashboard.version ?? 1, revisionSummary: "Updated dashboard settings" });
       setDashboard(result.dashboard);
+      if (patch.theme) setTheme(patch.theme);
       setDashboards((items) => items.map((item) => item._id === result.dashboard._id ? result.dashboard : item));
       setSaveState("saved");
     } catch (error) { toast.error(error instanceof Error ? error.message : "Couldn't save dashboard settings."); }
@@ -542,12 +563,13 @@ export default function DynamicDashboard() {
   const runPlan = async () => {
     if (!dashboard || !uiDocument) return;
     const requestedPrompt = prompt.trim();
-    if (!requestedPrompt) { toast.error("Describe the layout you want first."); return; }
+    if (!requestedPrompt) { toast.error("Describe the dashboard changes you want first."); return; }
     setPlanning(true);
     setPlan(null);
     try {
       const result = await planDashboard(dashboard._id, requestedPrompt);
       setPlan(result.plan);
+      setPlannedPrompt(requestedPrompt);
       if (result.plan.intent === "unsupported") {
         toast.info(result.plan.explanation);
       }
@@ -559,15 +581,20 @@ export default function DynamicDashboard() {
   };
 
   const applyPlan = async () => {
-    if (!dashboard || !plan?.ui || plan.intent !== "customize_ui") return;
+    if (!dashboard || !plan?.ui || plan.intent !== "customize_ui" || !plan.requiresApproval) return;
     setApplying(true);
     try {
-      const result = await applyDashboardPlan(dashboard._id, prompt.trim(), plan);
+      const result = await applyDashboardPlan(dashboard._id, plannedPrompt, plan);
       setDashboard(result.dashboard);
+      setDashboards((items) => items.map((item) => item._id === result.dashboard._id ? result.dashboard : item));
       setUiDocument(result.uiDocument);
+      setDraftWidgets(normalizeWidgets(result.dashboard.widgets));
+      const themeChange = plan.operations.find((operation) => operation.type === "set_theme");
+      if (themeChange?.type === "set_theme") setTheme(themeChange.value);
       setPlan(null);
+      setPlannedPrompt("");
       setPrompt("");
-      toast.success("Dashboard updated.");
+      toast.success(`Applied ${plan.operations.length + 1} dashboard change${plan.operations.length ? "s" : ""}.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Couldn't save the layout.");
     } finally {
@@ -582,6 +609,7 @@ export default function DynamicDashboard() {
       setDashboard(result.dashboard);
       setUiDocument(result.uiDocument);
       setPlan(null);
+      setPlannedPrompt("");
       toast.success("Previous layout restored.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Couldn't restore the previous layout.");
@@ -594,8 +622,10 @@ export default function DynamicDashboard() {
       const result = await createDashboard({ name: "New dashboard", slug: `dashboard-${Date.now()}`, theme: dashboard.theme, currency: dashboard.currency, density: dashboard.density, isDefault: false, widgets: [], filters: {} });
       setDashboard(result.dashboard);
       setDashboards((items) => [...items, result.dashboard]);
+      setDraftWidgets(normalizeWidgets(result.dashboard.widgets));
       setUiDocument(result.uiDocument);
       setPlan(null);
+      setPlannedPrompt("");
       setEditing(false);
       toast.success("New dashboard created.");
     } catch { toast.error("Couldn't create a new dashboard."); }
@@ -673,8 +703,8 @@ export default function DynamicDashboard() {
       {editing && <motion.div ref={editorRef} id="dashboard-layout-editor" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="relative scroll-mt-6 rounded-[2rem] border border-cyan-500/20 bg-background p-5 text-foreground shadow-xl shadow-black/5 sm:p-6"><div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-600">Layout editor</p><h3 className="mt-1 text-xl font-black tracking-tight">Build the desk around your priorities</h3></div><p className="text-xs text-primary/50">{draftWidgets.filter((widget) => widget.enabled).length} visible · {draftWidgets.length} configured</p></div><DashboardEditor widgets={draftWidgets} onChange={setDraftWidgets} onReset={resetWidgets} saveState={saveState} /></motion.div>}
 
       <div id="ai-layout-builder" className="relative scroll-mt-6 rounded-[2rem] border border-primary/10 bg-background p-5 text-foreground shadow-xl shadow-black/5 sm:p-6">
-        <div className="text-sm font-bold">Describe the layout you want</div>
-        <p className="mt-2 text-xs text-primary/55">Change the theme, reorder widgets, or adjust columns.</p>
+        <div className="flex items-center gap-2 text-sm font-bold"><Sparkles className="size-4 text-primary" />Ask your dashboard copilot</div>
+        <p className="mt-2 text-xs text-primary/55">Describe changes in plain language. The copilot can update supported dashboard settings, widgets, and layout; review the proposal before it saves.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {PROMPT_SUGGESTIONS.map((suggestion) => (
             <button key={suggestion} onClick={() => setPrompt(suggestion)} className="rounded-full border border-primary/10 px-3 py-1.5 text-xs text-primary/60 transition-colors hover:bg-primary/5 hover:text-primary/80">
@@ -683,19 +713,23 @@ export default function DynamicDashboard() {
           ))}
         </div>
         <div className="mt-3 flex flex-col gap-3 md:flex-row">
-          <Input value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void runPlan(); }} placeholder="e.g. dark risk-focused layout, security first, two columns" />
+          <Input value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void runPlan(); }} placeholder="e.g. Hide DeFi, rename this to Portfolio, and use a 3-column dark layout" />
           <Button className="gap-2 md:min-w-32" disabled={planning} onClick={runPlan}>
-            {planning ? <><Loader2 className="size-4 animate-spin" />Generating…</> : <><Wand2 className="size-4" />Generate</>}
+            {planning ? <><Loader2 className="size-4 animate-spin" />Thinking…</> : <><Wand2 className="size-4" />Plan changes</>}
           </Button>
         </div>
 
         {plan && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 rounded-xl bg-background p-4">
+            {plannedPrompt && <p className="mb-2 text-xs text-primary/45">Proposal for: “{plannedPrompt}”</p>}
             <p className="font-semibold">{plan.explanation}</p>
             {plan.warnings.map((warning) => <p key={warning} className="mt-2 text-sm text-amber-700">{warning}</p>)}
             {plan.ui && <p className="mt-3 text-sm text-primary/65">&ldquo;{plan.ui.title}&rdquo; — {plan.ui.layout}, {plan.ui.columns} column{plan.ui.columns === 1 ? "" : "s"}, {plan.ui.accentPreset} accent.</p>}
+            {plan.operations.length > 0 && <div className="mt-4 rounded-xl border border-primary/10 bg-primary/[0.025] p-3"><p className="text-xs font-bold uppercase tracking-wider text-primary/50">Dashboard actions</p><ul className="mt-2 space-y-1.5">{plan.operations.map((operation, index) => <li key={`${operation.type}-${index}`} className="flex items-start gap-2 text-sm text-primary/75"><Check className="mt-0.5 size-4 shrink-0 text-emerald-600" />{describeOperation(operation)}</li>)}</ul></div>}
+            {plan.operations.length === 0 && <p className="mt-3 text-xs text-primary/50">This proposal changes the generated layout only; no saved dashboard settings will change.</p>}
+            {plan.expectedVersion !== (dashboard.version ?? 1) && <p role="status" className="mt-3 text-sm text-amber-700">This dashboard changed after the proposal was generated. Generate a fresh proposal before applying it.</p>}
             <div className="mt-4 flex gap-2">
-              <Button disabled={applying || !plan.ui || plan.intent !== "customize_ui"} onClick={applyPlan} className="gap-2">
+              <Button disabled={applying || !plan.ui || plan.intent !== "customize_ui" || !plan.requiresApproval || plan.expectedVersion !== (dashboard.version ?? 1)} onClick={applyPlan} className="gap-2">
                 {applying ? <><Loader2 className="size-4 animate-spin" />Saving…</> : <><Check className="size-4" />Apply</>}
               </Button>
               <Button variant="ghost" onClick={() => setPlan(null)}>Cancel</Button>
@@ -710,8 +744,10 @@ export default function DynamicDashboard() {
         onTemplateApplied={(nextDashboard, nextUiDocument) => {
           setDashboard(nextDashboard);
           setDashboards((items) => items.map((item) => item._id === nextDashboard._id ? nextDashboard : item));
+          setDraftWidgets(normalizeWidgets(nextDashboard.widgets));
           setUiDocument(nextUiDocument);
           setPlan(null);
+          setPlannedPrompt("");
         }}
       />
     </section>

@@ -2,6 +2,15 @@ import { backendUrl, notifySessionExpired } from "./authApi";
 
 export type Dashboard = { _id: string; userId: string; name: string; slug: string; theme: "light" | "dark" | "system"; currency: string; density: "comfortable" | "compact" | "analytics"; isDefault: boolean; widgets: DashboardWidget[]; filters: Record<string, unknown>; version?: number };
 export type DashboardWidget = { id: string; type: string; title?: string; enabled: boolean; position: number; width: "small" | "medium" | "large" | "full"; config: Record<string, unknown> };
+export type DashboardOperation =
+  | { type: "set_dashboard_name"; value: string }
+  | { type: "enable_widget"; widgetType: string; title?: string; width?: DashboardWidget["width"] }
+  | { type: "disable_widget"; widgetType: string }
+  | { type: "move_widget"; widgetType: string; position: number }
+  | { type: "resize_widget"; widgetType: string; width: DashboardWidget["width"] }
+  | { type: "rename_widget"; widgetType: string; title: string }
+  | { type: "set_theme"; value: Dashboard["theme"] }
+  | { type: "set_density"; value: Dashboard["density"] };
 export type UIComponent =
   | { type: "widget"; id: string; widgetType: string; title?: string; width?: DashboardWidget["width"] }
   | { type: "text"; id: string; text: string; emphasis?: "normal" | "muted" | "strong" }
@@ -9,7 +18,7 @@ export type UIComponent =
   | { type: "card"; id: string; title?: string; tone?: "neutral" | "accent" | "success" | "warning" | "info" | "danger"; text?: string; body?: string; content?: string; description?: string; severity?: "low" | "medium" | "high"; width?: DashboardWidget["width"] };
 export type UISpec = { version: 1; title: string; description: string; accentPreset: "cyan" | "violet" | "emerald" | "amber" | "rose" | "slate"; layout: "stack" | "grid"; columns: number; components: UIComponent[] };
 export type UIDocument = { _id: string; userId: string; dashboardId: string; version: number; source: "ai" | "system"; prompt?: string; spec: UISpec; createdAt: string; updatedAt: string };
-export type DashboardPlan = { intent: "customize_ui" | "unsupported"; explanation: string; warnings: string[]; requiresApproval: boolean; ui: UISpec | null; source: "ai"; model?: string; requestId?: string };
+export type DashboardPlan = { intent: "customize_ui" | "unsupported"; explanation: string; warnings: string[]; requiresApproval: boolean; ui: UISpec | null; operations: DashboardOperation[]; expectedVersion: number; source: "ai"; model?: string; requestId?: string };
 
 const FRIENDLY_ERRORS: Record<string, string> = {
   "Failed to fetch": "Unable to connect to the backend. Please check your internet connection.",
